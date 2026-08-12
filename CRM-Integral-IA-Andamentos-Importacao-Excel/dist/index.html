@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#131519" />
+  <title>CRM Integral</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <section id="setupScreen" class="center-screen hidden">
+    <div class="auth-card setup-card">
+      <img src="https://www.integralse.com.br/assets/logo.png" alt="Integral Soluções em Engenharia" class="brand-mark-logo" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'brand-mark',textContent:'IE'}))" />
+      <p class="eyebrow">Configuração necessária</p>
+      <h1>Conecte o Supabase</h1>
+      <p>Abra o arquivo <code>config.js</code> e substitua os dois valores de exemplo pela Project URL e pela Publishable Key do seu projeto.</p>
+      <div class="code-sample">
+        <code>supabaseUrl: "https://...supabase.co"</code>
+        <code>supabaseAnonKey: "sb_publishable_..."</code>
+      </div>
+      <p class="muted">O guia completo está no arquivo <strong>GUIA-INSTALACAO.md</strong>.</p>
+    </div>
+  </section>
+
+  <section id="loginScreen" class="login-screen hidden">
+    <div class="login-brand-panel">
+      <img src="https://www.integralse.com.br/assets/logo.png" alt="Integral Soluções em Engenharia" class="login-logo" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'login-logo-fallback',textContent:'IE'}))" />
+      <p class="login-tagline">Desde 2017 transformando o Brasil</p>
+      <h1>Engenharia que regulariza, planeja e melhora cidades.</h1>
+      <div class="login-stats">
+        <div><strong>42+</strong><span>municípios</span></div>
+        <div><strong>8.450+</strong><span>imóveis</span></div>
+      </div>
+    </div>
+    <div class="login-form-panel">
+      <div class="auth-card borderless">
+        <p class="eyebrow">CRM Integral</p>
+        <h1>Acesse sua conta</h1>
+        <p class="muted">Comercial, atendimento e histórico de clientes em um único lugar.</p>
+
+        <form id="loginForm" class="stack-form">
+          <label>E-mail ou nome de usuário
+            <input id="loginEmail" type="text" autocomplete="username" required placeholder="Ex.: jonathan ou voce@integral.com.br" />
+          </label>
+          <label>Senha
+            <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Sua senha" />
+          </label>
+          <button class="primary full" type="submit">Entrar</button>
+        </form>
+        <p id="loginMessage" class="form-message"></p>
+      </div>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="https://www.integralse.com.br/assets/logo.png" alt="Integral" class="brand-mark-logo small" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'brand-mark small',textContent:'IE'}))" />
+        <div>
+          <strong>CRM Integral</strong>
+          <span>Gestão comercial e atendimento</span>
+        </div>
+      </div>
+
+      <div class="signed-user">
+        <strong id="sidebarUserName">Usuário</strong>
+        <span id="sidebarUserRole">Perfil</span>
+      </div>
+
+      <nav id="mainNav">
+        <button class="nav-button active" data-view="dashboard"><span>Dashboard</span></button>
+        <button class="nav-button" data-view="clientes"><span>Clientes cadastrados</span></button>
+        <button class="nav-button" data-view="funil"><span>Funil comercial</span></button>
+        <button class="nav-button" data-view="atendimentos"><span>Atendimentos</span></button>
+        <button class="nav-button" data-view="tarefas"><span>Tarefas</span></button>
+        <button class="nav-button" data-view="projetos"><span>Projetos / Núcleos</span></button>
+        <button class="nav-button" data-view="andamentos"><span>Andamentos</span></button>
+        <button class="nav-button marketing-only hidden" data-view="marketing"><span>Controle de Marketing</span></button>
+        <button class="nav-button admin-only hidden" data-view="usuarios"><span>Usuários</span></button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="refreshButton" class="ghost full">Atualizar dados</button>
+        <button id="logoutButton" class="ghost full">Sair</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="pageEyebrow">Visão geral</p>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageDescription" class="muted">Acompanhe comercial e pós-venda.</p>
+        </div>
+        <div class="top-actions">
+          <span id="syncStatus" class="sync-status">Sincronizado</span>
+          <button id="importClientsButton" class="secondary admin-only hidden">Importar Excel</button>
+          <button id="newClientButton" class="primary">+ Novo cliente</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active">
+        <div class="metric-grid">
+          <article class="metric-card"><span>Clientes</span><strong id="metricClients">0</strong><small>visíveis para seu perfil</small></article>
+          <article class="metric-card"><span>Em negociação</span><strong id="metricNegotiation">0</strong><small>oportunidades ativas</small></article>
+          <article class="metric-card"><span>Atendimentos abertos</span><strong id="metricOpenTickets">0</strong><small>aguardando conclusão</small></article>
+          <article class="metric-card"><span>Tarefas pendentes</span><strong id="metricPendingTasks">0</strong><small>ações programadas</small></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div><p class="eyebrow">Comercial</p><h2>Funil de vendas</h2></div>
+              <strong id="pipelineValue" class="panel-kpi">R$ 0</strong>
+            </div>
+            <div id="dashboardPipeline" class="summary-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div><p class="eyebrow">Atendimento</p><h2>Demandas por setor</h2></div>
+            </div>
+            <div id="dashboardService" class="summary-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Agenda</p><h2>Próximas tarefas</h2></div></div>
+            <div id="dashboardTasks" class="record-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Histórico</p><h2>Interações recentes</h2></div></div>
+            <div id="dashboardHistory" class="record-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="clientes" class="view">
+        <div class="filters panel compact clientes-filters">
+          <input id="clientSearch" placeholder="Buscar por nome, telefone, remessa..." />
+          <select id="municipalityFilter"><option value="">Todos os municípios</option></select>
+          <select id="nucleusFilter"><option value="">Todos os NUIs</option></select>
+          <select id="clientStatusFilter"><option value="">Todos os status</option></select>
+          <select id="clientOwnerFilter" class="admin-only hidden"><option value="">Todos os responsáveis</option></select>
+        </div>
+        <p class="muted small-note" id="clientResultCount"></p>
+        <div id="clientsByMunicipality" class="municipality-groups"></div>
+      </section>
+
+      <section id="funil" class="view">
+        <div class="filters panel compact">
+          <input id="pipelineSearch" placeholder="Buscar no funil..." />
+          <select id="pipelineOwnerFilter" class="admin-only hidden"><option value="">Todos os responsáveis</option></select>
+        </div>
+        <div id="pipelineBoard" class="kanban-board"></div>
+      </section>
+
+      <section id="atendimentos" class="view">
+        <div class="filters panel compact list-filters">
+          <input id="ticketSearch" placeholder="Buscar cliente ou assunto..." />
+          <select id="ticketMunicipalityFilter"><option value="">Todos os municípios</option></select>
+          <select id="ticketNucleusFilter"><option value="">Todos os NUIs</option></select>
+          <select id="ticketSectorFilter"><option value="">Todos os setores</option></select>
+          <select id="ticketStatusFilter"><option value="">Todos os status</option></select>
+          <button id="newTicketButton" class="primary">+ Novo atendimento</button>
+        </div>
+        <p class="muted small-note" id="ticketResultCount"></p>
+        <div id="ticketsList" class="record-list wide"></div>
+        <button id="ticketsLoadMore" class="secondary full load-more hidden">Carregar mais atendimentos</button>
+      </section>
+
+      <section id="tarefas" class="view">
+        <div class="filters panel compact list-filters">
+          <input id="taskSearch" placeholder="Buscar cliente ou tarefa..." />
+          <select id="taskMunicipalityFilter"><option value="">Todos os municípios</option></select>
+          <select id="taskNucleusFilter"><option value="">Todos os NUIs</option></select>
+          <select id="taskStateFilter">
+            <option value="pending">Pendentes</option>
+            <option value="done">Concluídas</option>
+            <option value="all">Todas</option>
+          </select>
+          <button id="newTaskButton" class="primary">+ Nova tarefa</button>
+        </div>
+        <p class="muted small-note" id="taskResultCount"></p>
+        <div id="tasksList" class="record-list wide"></div>
+        <button id="tasksLoadMore" class="secondary full load-more hidden">Carregar mais tarefas</button>
+      </section>
+
+
+      <section id="projetos" class="view">
+        <div class="panel compact drill-toolbar">
+          <div id="projectsBreadcrumb" class="breadcrumb"></div>
+          <div class="drill-toolbar-actions">
+            <input id="projectSearch" placeholder="Buscar..." />
+            <select id="projectStateFilter"><option value="">Todos os estados</option></select>
+            <select id="projectActiveFilter">
+              <option value="active">Ativos</option>
+              <option value="all">Todos</option>
+              <option value="inactive">Inativos</option>
+            </select>
+            <button id="newProjectButton" class="primary admin-only hidden">+ Novo projeto</button>
+          </div>
+        </div>
+        <div id="projectSchemaNotice" class="panel schema-notice hidden">
+          A estrutura de Projetos ainda não foi aplicada no Supabase. O CRM continua funcionando normalmente. Use o arquivo
+          <strong>supabase/MIGRACAO-PROJETOS-ANDAMENTOS.sql</strong> quando formos atualizar o banco atual.
+        </div>
+        <div id="projectsGrid" class="project-grid"></div>
+      </section>
+
+      <section id="andamentos" class="view">
+        <div class="panel progress-toolbar">
+          <div class="progress-toolbar-main">
+            <div id="progressBreadcrumb" class="breadcrumb"></div>
+            <div class="progress-search-wrap">
+              <span class="progress-search-icon">⌕</span>
+              <input id="progressSearch" placeholder="Buscar..." />
+            </div>
+            <button id="newProgressButton" class="primary">+ Novo andamento</button>
+          </div>
+          <div class="progress-toolbar-filters">
+            <select id="progressStateFilter"><option value="">Todos os estados</option></select>
+            <select id="progressStatusFilter">
+              <option value="">Todos os status</option>
+              <option>Topografia</option>
+              <option>Projeto</option>
+              <option>Protocolado</option>
+              <option>Correções para Prefeitura</option>
+              <option>Registro de Imóveis</option>
+              <option>Concluído</option>
+              <option>Outros</option>
+            </select>
+            <select id="progressActivityFilter">
+              <option value="all">Todos</option>
+              <option value="with_progress">Com andamento</option>
+              <option value="without_progress">Sem andamento</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="progressSchemaNotice" class="panel schema-notice hidden">
+          A estrutura de Andamentos ainda não foi aplicada no Supabase. Depois da migração, cada atualização será vinculada a um Projeto/Núcleo e automaticamente compartilhada por todos os clientes daquele grupo.
+        </div>
+
+        <div id="progressSummary" class="progress-summary-grid"></div>
+
+        <div class="panel progress-directory">
+          <div class="progress-directory-head">
+            <div>
+              <p class="eyebrow">Carteira de projetos</p>
+              <h2 id="progressResultsTitle">Municípios</h2>
+            </div>
+            <span id="progressResultsCount" class="muted"></span>
+          </div>
+          <div id="progressProjectsList" class="progress-project-list compact-list"></div>
+        </div>
+      </section>
+
+
+      <section id="marketing" class="view marketing-only hidden">
+        <div class="filters panel compact marketing-filters">
+          <input id="marketingSearch" placeholder="Buscar projeto, cidade ou núcleo..." />
+          <select id="marketingStatusFilter">
+            <option value="">Todos os projetos</option>
+            <option value="andamento">Em andamento</option>
+            <option value="concluido">Jornada concluída</option>
+          </select>
+          <button id="newMarketingProjectButton" class="primary">+ Vincular projeto</button>
+        </div>
+        <div id="marketingProjectsGrid" class="marketing-project-grid"></div>
+      </section>
+
+      <section id="usuarios" class="view admin-only hidden">
+        <div class="users-admin-layout">
+          <article class="panel user-create-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Equipe</p>
+                <h2>Criar usuário</h2>
+                <p class="muted">O apelido será o nome de usuário usado no acesso ao CRM.</p>
+              </div>
+            </div>
+            <form id="createUserForm" class="stack-form">
+              <label>Nome completo<input id="newUserName" required placeholder="Ex.: Jonathan David de Abreu" /></label>
+              <label>Nome de usuário / apelido
+                <input id="newUserNickname" required maxlength="30" autocomplete="off" placeholder="Ex.: jonathan" />
+                <small class="field-help">Use letras, números, ponto, hífen ou _. Não use espaços.</small>
+              </label>
+              <label>E-mail<input id="newUserEmail" type="email" required placeholder="nome@empresa.com.br" /></label>
+              <label>Senha inicial<input id="newUserPassword" type="password" minlength="8" required /></label>
+              <label>Perfil
+                <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="admin">Administrador</option></select>
+              </label>
+              <button class="primary" type="submit">Criar usuário</button>
+              <p id="createUserMessage" class="form-message"></p>
+            </form>
+          </article>
+
+          <article class="panel users-list-panel">
+            <div class="users-directory-head">
+              <div>
+                <p class="eyebrow">Permissões</p>
+                <h2>Usuários cadastrados</h2>
+                <p class="muted">Altere apelido, perfil e status diretamente na lista.</p>
+              </div>
+              <div class="users-count-card"><strong id="usersCount">0</strong><span>usuários</span></div>
+            </div>
+            <div class="users-list-head">
+              <span>Usuário</span>
+              <span>Nome completo</span>
+              <span>Perfil</span>
+              <span>Status</span>
+            </div>
+            <div id="usersList" class="users-table-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="clientFormDialog" class="dialog medium-dialog">
+    <form id="clientForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Cadastro</p><h2 id="clientFormTitle">Novo cliente</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="clientFormDialog">×</button>
+      </div>
+      <input type="hidden" id="clientId" />
+      <div class="form-grid two">
+        <label class="span-two">Nome do cliente<input id="clientName" required /></label>
+        <label>Telefone / WhatsApp<input id="clientPhone" /></label>
+        <label>E-mail<input id="clientEmail" type="email" /></label>
+        <label class="span-two">Projeto / Núcleo Urbano
+          <select id="clientProject"><option value="">Sem NUI / vincular depois</option></select>
+          <small class="field-help">Ao selecionar um projeto, cidade, estado e núcleo são preenchidos automaticamente.</small>
+        </label>
+        <label>Estado<input id="clientState" maxlength="2" placeholder="SC" /></label>
+        <label>Município<input id="clientMunicipality" /></label>
+        <label>Núcleo (NUI)<input id="clientNucleus" placeholder="Ex.: Vila Nova" /></label>
+        <label>Remessa<input id="clientShipment" /></label>
+        <label>Origem
+          <select id="clientSource">
+            <option>Indicação</option><option>Site</option><option>Instagram</option><option>Prefeitura</option><option>Prospecção ativa</option><option>Outro</option>
+          </select>
+        </label>
+        <label>Status<select id="clientStatus"></select></label>
+        <label>Valor estimado<input id="clientValue" type="number" min="0" step="100" /></label>
+        <label>Responsável operacional<input id="clientResponsible" /></label>
+        <label>Código do processo<input id="clientProcessCode" placeholder="Ex.: GTB01_0386" /></label>
+        <label>Estado civil<input id="clientCivilStatus" /></label>
+        <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
+        <label class="span-two">Observações<textarea id="clientNotes"></textarea></label>
+      </div>
+      <div class="dialog-actions">
+        <button id="deleteClientButton" type="button" class="danger hidden">Excluir cliente</button>
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="clientFormDialog">Cancelar</button>
+        <button class="primary" type="submit">Salvar cliente</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="clientImportDialog" class="dialog large-dialog">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Importação em massa</p>
+          <h2>Importar clientes por Excel</h2>
+          <p class="muted">Compatível com a planilha Dados Documental GTB. O NUI é opcional e pode ser alterado depois.</p>
+        </div>
+        <button type="button" class="icon-button" data-close-dialog="clientImportDialog">×</button>
+      </div>
+
+      <div class="import-step-grid">
+        <article class="panel flat">
+          <p class="eyebrow">1. Arquivo</p>
+          <h3>Selecione a planilha</h3>
+          <label>Excel ou CSV
+            <input id="clientImportFile" type="file" accept=".xlsx,.xls,.csv" />
+          </label>
+          <p class="muted small-note">Colunas reconhecidas: CodigoProcesso, Requerente, Contato, EstadoCivil, Tipo, Contrato, Procuracao, Requerimento, Distrato, DocumentoFaltante, InformacaoFaltante, Observacao e Situacao.</p>
+        </article>
+
+        <article class="panel flat">
+          <p class="eyebrow">2. NUI</p>
+          <h3>Vinculação opcional</h3>
+          <label>Projeto / NUI
+            <select id="clientImportProject"><option value="">Sem NUI — vincular depois</option></select>
+          </label>
+          <p class="muted small-note">Se escolher um NUI, município, estado e núcleo serão preenchidos automaticamente para todos os registros importados.</p>
+        </article>
+
+        <article class="panel flat">
+          <p class="eyebrow">3. Regra</p>
+          <h3>Duplicidades</h3>
+          <label>Modo de importação
+            <select id="clientImportMode">
+              <option value="upsert">Criar novos e atualizar por Código do Processo</option>
+              <option value="new">Importar somente novos</option>
+            </select>
+          </label>
+          <p class="muted small-note">O Código do Processo é a referência principal para evitar duplicações.</p>
+        </article>
+      </div>
+
+      <div id="clientImportSummary" class="import-summary hidden"></div>
+      <div id="clientImportPreview" class="import-preview hidden"></div>
+
+      <div class="dialog-actions">
+        <button type="button" class="secondary" data-close-dialog="clientImportDialog">Cancelar</button>
+        <div class="spacer"></div>
+        <button id="clientImportRun" type="button" class="primary" disabled>Importar clientes</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="clientDetailDialog" class="dialog large-dialog">
+    <div class="dialog-body client-detail-body">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow" id="detailLocation">Cliente</p>
+          <h2 id="detailName">Nome</h2>
+          <p id="detailSubtitle" class="muted"></p>
+        </div>
+        <button type="button" class="icon-button" data-close-dialog="clientDetailDialog">×</button>
+      </div>
+
+      <div class="detail-metrics">
+        <article><span>Status</span><strong id="detailStatus">-</strong></article>
+        <article><span>Valor estimado</span><strong id="detailValue">-</strong></article>
+        <article><span>Cadastro</span><strong id="detailCreated">-</strong></article>
+        <article><span>Último contato</span><strong id="detailLastContact">-</strong></article>
+      </div>
+
+      <div class="detail-layout">
+        <div class="detail-main">
+          <article class="panel flat">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ficha</p><h3>Dados do cliente</h3></div>
+              <button id="editDetailClientButton" class="secondary small-button">Editar</button>
+            </div>
+            <div id="detailData" class="detail-data"></div>
+          </article>
+
+          <article class="panel flat">
+            <div class="panel-head"><div><p class="eyebrow">WhatsApp / Chatwoot</p><h3>Interações sincronizadas</h3></div></div>
+            <p class="muted">Mensagens do cliente, da IA e dos agentes aparecem automaticamente na linha do tempo abaixo.</p>
+          </article>
+
+          <article class="panel flat">
+            <div class="panel-head"><div><p class="eyebrow">Linha do tempo</p><h3>Histórico completo</h3></div></div>
+            <div id="detailTimeline" class="timeline"></div>
+          </article>
+        </div>
+
+        <aside class="detail-actions-column">
+          <article class="panel flat">
+            <p class="eyebrow">Atualização</p><h3>Registrar interação</h3>
+            <form id="historyForm" class="stack-form compact-form">
+              <label>Tipo<select id="historyType">
+                <option>Contato Inicial</option><option>Follow Up</option><option>Documentos Recebidos</option><option>Contrato Assinado</option><option>Cliente Ativo</option><option>Diligência Documental</option>
+              </select></label>
+              <label>Descrição<textarea id="historyDescription" required></textarea></label>
+              <button class="primary" type="submit">Salvar atualização</button>
+            </form>
+          </article>
+
+          <article class="panel flat">
+            <p class="eyebrow">Pós-venda</p><h3>Novo atendimento</h3>
+            <form id="ticketForm" class="stack-form compact-form">
+              <label>Setor<select id="ticketSector"></select></label>
+              <label>Assunto<input id="ticketSubject" required /></label>
+              <label>Status<select id="ticketStatus"></select></label>
+              <label>Observação<textarea id="ticketNotes"></textarea></label>
+              <button class="primary" type="submit">Registrar atendimento</button>
+            </form>
+          </article>
+
+          <article class="panel flat">
+            <p class="eyebrow">Agenda</p><h3>Nova tarefa</h3>
+            <form id="taskForm" class="stack-form compact-form">
+              <label>Título<input id="taskTitle" required /></label>
+              <label>Prazo<input id="taskDueDate" type="date" required /></label>
+              <label>Prioridade<select id="taskPriority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
+              <label class="admin-only hidden">Responsável<select id="taskAssignee"></select></label>
+              <button class="primary" type="submit">Criar tarefa</button>
+            </form>
+          </article>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="ticketStandaloneDialog" class="dialog medium-dialog">
+    <form id="ticketStandaloneForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Pós-venda</p><h2>Novo atendimento</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="ticketStandaloneDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Cliente
+          <div class="client-picker" data-picker="ticketStandalone">
+            <input type="text" id="ticketStandaloneClientSearch" placeholder="Digite para buscar o cliente..." autocomplete="off" required />
+            <input type="hidden" id="ticketStandaloneClientId" />
+            <div class="client-picker-results hidden" id="ticketStandaloneClientResults"></div>
+          </div>
+        </label>
+        <label>Setor<select id="ticketStandaloneSector"></select></label>
+        <label>Status<select id="ticketStandaloneStatus"></select></label>
+        <label class="span-two">Assunto<input id="ticketStandaloneSubject" required /></label>
+        <label class="span-two">Observação<textarea id="ticketStandaloneNotes"></textarea></label>
+      </div>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="ticketStandaloneDialog">Cancelar</button>
+        <button class="primary" type="submit">Registrar atendimento</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="taskStandaloneDialog" class="dialog medium-dialog">
+    <form id="taskStandaloneForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Agenda</p><h2>Nova tarefa</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="taskStandaloneDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Cliente
+          <div class="client-picker" data-picker="taskStandalone">
+            <input type="text" id="taskStandaloneClientSearch" placeholder="Digite para buscar o cliente..." autocomplete="off" required />
+            <input type="hidden" id="taskStandaloneClientId" />
+            <div class="client-picker-results hidden" id="taskStandaloneClientResults"></div>
+          </div>
+        </label>
+        <label class="span-two">Título<input id="taskStandaloneTitle" required /></label>
+        <label>Prazo<input id="taskStandaloneDueDate" type="date" required /></label>
+        <label>Prioridade<select id="taskStandalonePriority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
+        <label class="admin-only hidden span-two">Responsável<select id="taskStandaloneAssignee"></select></label>
+      </div>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="taskStandaloneDialog">Cancelar</button>
+        <button class="primary" type="submit">Criar tarefa</button>
+      </div>
+    </form>
+  </dialog>
+
+
+  <dialog id="projectDialog" class="dialog medium-dialog">
+    <form id="projectForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Projetos / Núcleos</p><h2 id="projectDialogTitle">Novo projeto</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="projectDialog">×</button>
+      </div>
+      <input type="hidden" id="projectId" />
+      <div class="form-grid two">
+        <label class="span-two">Nome do Projeto / Núcleo<input id="projectName" required placeholder="Ex.: Bairro Seminário" /></label>
+        <label>Cidade<input id="projectCity" required /></label>
+        <label>Estado<input id="projectState" maxlength="2" required placeholder="SC" /></label>
+        <label>Status<select id="projectActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+        <label class="span-two">Observações<textarea id="projectNotes"></textarea></label>
+      </div>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="projectDialog">Cancelar</button>
+        <button class="primary" type="submit">Salvar projeto</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="progressDialog" class="dialog medium-dialog">
+    <form id="progressForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Andamentos</p><h2>Novo andamento</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="progressDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Projeto / Núcleo Urbano
+          <select id="progressProject" required><option value="">Selecione um projeto</option></select>
+        </label>
+        <label>Status atual
+          <select id="progressStatus" required>
+            <option>Topografia</option>
+            <option>Projeto</option>
+            <option>Protocolado</option>
+            <option>Correções para Prefeitura</option>
+            <option>Registro de Imóveis</option>
+            <option>Concluído</option>
+            <option>Outros</option>
+          </select>
+        </label>
+        <label>Data da atualização<input id="progressDate" type="date" required /></label>
+        <label>Status operacional
+          <select id="progressOperationalStatus">
+            <option>Em andamento</option>
+            <option>Aguardando cliente</option>
+            <option>Aguardando Prefeitura</option>
+            <option>Aguardando Cartório</option>
+            <option>Pausado</option>
+            <option>Concluído</option>
+          </select>
+        </label>
+        <label>Previsão oficial (se houver)<input id="progressForecast" type="date" /></label>
+        <label class="span-two">Justificativa / informação para o cliente
+          <textarea id="progressPublicText" required placeholder="Descreva de forma clara o status atual. Este texto poderá ser consultado pela IA para responder aos clientes."></textarea>
+        </label>
+        <label class="span-two">Orientação para o agente IA
+          <textarea id="progressAiGuidance" placeholder="Opcional. Ex.: explique que o processo aguarda análise da Prefeitura e não informe prazo se a previsão estiver vazia."></textarea>
+        </label>
+        <label class="span-two">Observação interna
+          <textarea id="progressInternalText" placeholder="Opcional. Informação visível apenas para a equipe, nunca para o chatbot."></textarea>
+        </label>
+        <label class="checkbox-line span-two"><input id="progressVisibleAi" type="checkbox" checked /> Disponível para consulta pelo agente IA</label>
+      </div>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="progressDialog">Cancelar</button>
+        <button class="primary" type="submit">Registrar andamento</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="marketingProjectDialog" class="dialog medium-dialog">
+    <form id="marketingProjectForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Controle de Marketing</p><h2>Vincular projeto</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="marketingProjectDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Projeto / Núcleo Urbano
+          <select id="marketingProjectSelect" required><option value="">Selecione um projeto</option></select>
+        </label>
+        <label class="span-two">Observações<textarea id="marketingObservacoes"></textarea></label>
+      </div>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="marketingProjectDialog">Cancelar</button>
+        <button class="primary" type="submit">Vincular ao Marketing</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="marketingJourneyDialog" class="dialog large-dialog">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Jornada do cliente</p>
+          <h2 id="marketingJourneyTitle">Município</h2>
+          <p id="marketingJourneySubtitle" class="muted"></p>
+        </div>
+        <button type="button" class="icon-button" data-close-dialog="marketingJourneyDialog">×</button>
+      </div>
+      <div id="marketingJourneyProgress" class="marketing-journey-progress"></div>
+      <div id="marketingJourneyPhases" class="marketing-journey-phases"></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./config.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
