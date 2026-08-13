@@ -1974,86 +1974,37 @@ function renderClients() {
 
 
 function clientRow(client) {
-  const processCode =
-    client.codigo_processo ||
-    "SEM CÓDIGO";
+  const processCode = cleanImportText(client.codigo_processo) || "SEM CÓDIGO";
 
-  return `
-    <button
-      class="client-row"
-      data-open-client="${client.id}"
-    >
-
-      <div class="client-main-info">
-
-        <span class="client-process-code">
-          ${escapeHtml(processCode)}
-        </span>
-
-        <strong class="client-primary-name">
-          ${escapeHtml(client.nome)}
-        </strong>
-
-        <span>
-          ${escapeHtml(
-            client.telefone ||
-            client.email ||
-            "Sem contato"
-          )}
-        </span>
-
+  return `<button class="client-row" data-open-client="${client.id}">
+    <div class="client-main-info">
+      <div class="client-name-line">
+        <span class="client-process-code">${escapeHtml(processCode)}</span>
+        <strong>${escapeHtml(client.nome)}</strong>
       </div>
 
+      <span>${escapeHtml(client.telefone || client.email || "Sem contato")}</span>
+    </div>
 
-      <div>
-        ${statusBadge(client.status)}
-      </div>
+    <div>
+      ${statusBadge(client.status)}
+    </div>
 
+    <div>
+      <strong>${money(client.valor_estimado)}</strong>
+      <span>Estimado</span>
+    </div>
 
-      <div>
+    <div>
+      <strong>${formatDate(client.last_contact_at)}</strong>
+      <span>Último contato</span>
+    </div>
 
-        <strong>
-          ${money(client.valor_estimado)}
-        </strong>
-
-        <span>
-          Estimado
-        </span>
-
-      </div>
-
-
-      <div>
-
-        <strong>
-          ${formatDate(client.last_contact_at)}
-        </strong>
-
-        <span>
-          Último contato
-        </span>
-
-      </div>
-
-
-      <div>
-
-        <strong>
-          ${escapeHtml(
-            profileName(
-              client.owner_id
-            )
-          )}
-        </strong>
-
-        <span>
-          Dono
-        </span>
-
-      </div>
-
-    </button>
-  `;
+    <div>
+      <strong>${escapeHtml(profileName(client.owner_id))}</strong>
+      <span>Dono</span>
+    </div>
+  </button>`;
 }
 
 
