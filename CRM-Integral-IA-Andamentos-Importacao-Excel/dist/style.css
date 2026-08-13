@@ -654,3 +654,43 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
   font-size: 11px;
   color: var(--muted);
 }
+.client-main-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.client-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.client-process-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  padding: 4px 7px;
+  border-radius: 6px;
+
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+
+  color: #087f86;
+  background: #e8f6f6;
+  border: 1px solid #cce9ea;
+
+  white-space: nowrap;
+}
+
+.client-name-line strong {
+  font-size: inherit;
+  font-weight: 700;
+}
