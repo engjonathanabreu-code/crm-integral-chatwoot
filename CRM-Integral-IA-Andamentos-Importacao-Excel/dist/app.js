@@ -1974,13 +1974,23 @@ function renderClients() {
 
 
 function clientRow(client) {
+  const processCode =
+    client.codigo_processo ||
+    "SEM CÓDIGO";
+
   return `
     <button
       class="client-row"
       data-open-client="${client.id}"
     >
-      <div>
-        <strong>
+
+      <div class="client-main-info">
+
+        <span class="client-process-code">
+          ${escapeHtml(processCode)}
+        </span>
+
+        <strong class="client-primary-name">
           ${escapeHtml(client.nome)}
         </strong>
 
@@ -1991,13 +2001,17 @@ function clientRow(client) {
             "Sem contato"
           )}
         </span>
+
       </div>
+
 
       <div>
         ${statusBadge(client.status)}
       </div>
 
+
       <div>
+
         <strong>
           ${money(client.valor_estimado)}
         </strong>
@@ -2005,9 +2019,12 @@ function clientRow(client) {
         <span>
           Estimado
         </span>
+
       </div>
 
+
       <div>
+
         <strong>
           ${formatDate(client.last_contact_at)}
         </strong>
@@ -2015,17 +2032,26 @@ function clientRow(client) {
         <span>
           Último contato
         </span>
+
       </div>
 
+
       <div>
+
         <strong>
-          ${escapeHtml(profileName(client.owner_id))}
+          ${escapeHtml(
+            profileName(
+              client.owner_id
+            )
+          )}
         </strong>
 
         <span>
           Dono
         </span>
+
       </div>
+
     </button>
   `;
 }
