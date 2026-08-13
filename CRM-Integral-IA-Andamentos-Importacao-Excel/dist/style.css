@@ -595,3 +595,62 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
 .import-table th, .import-table td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; }
 .import-table th { position: sticky; top: 0; background: var(--panel); z-index: 1; color: var(--muted); }
 @media (max-width: 900px) { .import-step-grid { grid-template-columns: 1fr; } }
+/* ======================================================
+   CÓDIGO + NOME DO CLIENTE NA LISTAGEM
+====================================================== */
+
+.client-main-info-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.client-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.client-process-code-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  padding: 4px 7px;
+
+  border-radius: 6px;
+
+  font-size: 10px;
+  font-weight: 750;
+
+  line-height: 1;
+
+  letter-spacing: 0.03em;
+
+  color: #0f766e;
+
+  background: rgba(15, 118, 110, 0.08);
+
+  border: 1px solid rgba(15, 118, 110, 0.14);
+}
+
+.client-primary-name {
+  font-size: 13px;
+  font-weight: 700;
+
+  color: var(--text);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.client-contact-line {
+  font-size: 11px;
+  color: var(--muted);
+}
