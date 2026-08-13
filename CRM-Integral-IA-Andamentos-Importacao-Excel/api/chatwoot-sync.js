@@ -58,7 +58,10 @@ async function sb(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(`Supabase ${response.status}: ${text}`);
+    const error = new Error(`Supabase ${response.status}: ${text}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
 
   return data;
@@ -240,6 +243,32 @@ function direction(payload) {
   return "sistema";
 }
 
+async function findClientByPhoneOrContact(phone, contactId) {
+  if (phone) {
+    const byPhone = await sb(
+      `clientes?telefone_normalizado=eq.${encodeURIComponent(phone)}&limit=1`
+    );
+
+    if (byPhone.length) {
+      return byPhone[0];
+    }
+  }
+
+  if (contactId) {
+    const byContact = await sb(
+      `clientes?chatwoot_contact_id=eq.${encodeURIComponent(
+        contactId
+      )}&limit=1`
+    );
+
+    if (byContact.length) {
+      return byContact[0];
+    }
+  }
+
+  return null;
+}
+
 async function findOrCreateClient(payload) {
   const phone = normalizePhone(extractPhone(payload));
   const ownerId = process.env.CRM_INTEGRATION_OWNER_ID;
@@ -253,14 +282,6 @@ async function findOrCreateClient(payload) {
 
   if (!ownerId) {
     throw new Error("CRM_INTEGRATION_OWNER_ID não configurado.");
-  }
-
-  let existing = [];
-
-  if (phone) {
-    existing = await sb(
-      `clientes?telefone_normalizado=eq.${encodeURIComponent(phone)}&limit=1`
-    );
   }
 
   const conversationId =
@@ -288,32 +309,63 @@ async function findOrCreateClient(payload) {
     last_contact_at: new Date().toISOString(),
   };
 
-  if (existing.length) {
-    const id = existing[0].id;
+  const existing = await findClientByPhoneOrContact(phone, contactId);
 
-    const data = await sb(`clientes?id=eq.${id}`, {
+  if (existing) {
+    const data = await sb(`clientes?id=eq.${existing.id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     });
 
     return data?.[0] || {
-      ...existing[0],
+      ...existing,
       ...patch,
     };
   }
 
-  const created = await sb("clientes", {
-    method: "POST",
-    body: JSON.stringify({
-      ...patch,
-      owner_id: ownerId,
-      created_by: ownerId,
-      status: "Contato feito",
-      valor_estimado: 0,
-    }),
-  });
+  try {
+    const created = await sb("clientes", {
+      method: "POST",
+      body: JSON.stringify({
+        ...patch,
+        owner_id: ownerId,
+        created_by: ownerId,
+        status: "Contato feito",
+        valor_estimado: 0,
+      }),
+    });
 
-  return created[0];
+    return created[0];
+  } catch (error) {
+    if (error.status !== 409) {
+      throw error;
+    }
+
+    console.warn(
+      "CONFLITO DE CLIENTE DETECTADO. Buscando registro existente."
+    );
+
+    const clientAfterConflict = await findClientByPhoneOrContact(
+      phone,
+      contactId
+    );
+
+    if (!clientAfterConflict) {
+      throw new Error(
+        "Cliente entrou em conflito de unicidade, mas não foi encontrado após o conflito."
+      );
+    }
+
+    const data = await sb(`clientes?id=eq.${clientAfterConflict.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+
+    return data?.[0] || {
+      ...clientAfterConflict,
+      ...patch,
+    };
+  }
 }
 
 async function ensureAttendance(cliente, payload) {
@@ -344,22 +396,38 @@ async function ensureAttendance(cliente, payload) {
     attrs.ia_motivo_contato ||
     "Atendimento via WhatsApp";
 
-  const created = await sb("atendimentos", {
-    method: "POST",
-    body: JSON.stringify({
-      cliente_id: cliente.id,
-      created_by: null,
-      setor: sector,
-      assunto: reason,
-      motivo_contato: reason,
-      status: "Em andamento",
-      origem: "Chatwoot",
-      agente_nome: extractAgent(payload),
-      chatwoot_conversation_id: conversationId,
-    }),
-  });
+  try {
+    const created = await sb("atendimentos", {
+      method: "POST",
+      body: JSON.stringify({
+        cliente_id: cliente.id,
+        created_by: null,
+        setor: sector,
+        assunto: reason,
+        motivo_contato: reason,
+        status: "Em andamento",
+        origem: "Chatwoot",
+        agente_nome: extractAgent(payload),
+        chatwoot_conversation_id: conversationId,
+      }),
+    });
 
-  return created[0];
+    return created[0];
+  } catch (error) {
+    if (error.status !== 409) {
+      throw error;
+    }
+
+    const afterConflict = await sb(
+      `atendimentos?chatwoot_conversation_id=eq.${conversationId}&limit=1`
+    );
+
+    if (afterConflict.length) {
+      return afterConflict[0];
+    }
+
+    throw error;
+  }
 }
 
 async function saveMessage(cliente, atendimento, payload) {
@@ -397,38 +465,50 @@ async function saveMessage(cliente, atendimento, payload) {
     }
   }
 
-  await sb("interacoes", {
-    method: "POST",
-    body: JSON.stringify({
-      cliente_id: cliente.id,
-      atendimento_id: atendimento?.id || null,
-      chatwoot_conversation_id:
-        getConversation(payload)?.id ||
-        payload?.conversation?.id ||
-        null,
-      chatwoot_message_id: messageId || null,
-      direcao: direction(payload),
-      autor_tipo: type,
-      autor_nome:
-        type === "Cliente"
-          ? extractName(payload)
-          : type === "IA"
-          ? "IA Integral"
-          : extractAgent(payload),
-      setor: extractSector(payload),
-      conteudo: payload?.content || "",
-      tipo_midia:
-        Array.isArray(payload?.attachments) &&
-        payload.attachments.length
-          ? payload.attachments[0]?.file_type || "anexo"
-          : "texto",
-      evento: "mensagem",
-      metadata: {
-        attachments: payload?.attachments || [],
-      },
-      created_at: createdAt,
-    }),
-  });
+  try {
+    await sb("interacoes", {
+      method: "POST",
+      body: JSON.stringify({
+        cliente_id: cliente.id,
+        atendimento_id: atendimento?.id || null,
+        chatwoot_conversation_id:
+          getConversation(payload)?.id ||
+          payload?.conversation?.id ||
+          null,
+        chatwoot_message_id: messageId || null,
+        direcao: direction(payload),
+        autor_tipo: type,
+        autor_nome:
+          type === "Cliente"
+            ? extractName(payload)
+            : type === "IA"
+            ? "IA Integral"
+            : extractAgent(payload),
+        setor: extractSector(payload),
+        conteudo: payload?.content || "",
+        tipo_midia:
+          Array.isArray(payload?.attachments) &&
+          payload.attachments.length
+            ? payload.attachments[0]?.file_type || "anexo"
+            : "texto",
+        evento: "mensagem",
+        metadata: {
+          attachments: payload?.attachments || [],
+        },
+        created_at: createdAt,
+      }),
+    });
+  } catch (error) {
+    if (error.status === 409) {
+      console.log(
+        "INTERAÇÃO DUPLICADA IGNORADA:",
+        messageId || "sem message_id"
+      );
+      return;
+    }
+
+    throw error;
+  }
 }
 
 async function resolveAttendance(payload) {
