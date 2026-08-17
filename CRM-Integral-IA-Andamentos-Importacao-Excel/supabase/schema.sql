@@ -31,7 +31,7 @@ create table if not exists public.clientes (
   nucleo text,
   remessa text,
   origem text,
-  status text not null default 'Novo' check (status in ('Novo', 'Contato feito', 'Proposta enviada', 'Negociação', 'Fechado', 'Perdido')),
+  status text not null default 'Novo' check (status in ('Novo', 'Contato feito', 'Proposta enviada', 'Negociação', 'Cliente Ativo', 'Perdido')),
   valor_estimado numeric(14,2) not null default 0,
   responsavel text,
   observacoes text,

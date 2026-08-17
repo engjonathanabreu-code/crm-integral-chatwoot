@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const CONFIG = window.CRM_CONFIG || {};
-const CLIENT_STATUSES = ["Novo", "Contato feito", "Proposta enviada", "Negociação", "Fechado", "Perdido"];
+const CLIENT_STATUSES = ["Novo", "Contato feito", "Proposta enviada", "Negociação", "Cliente Ativo", "Perdido"];
 const TICKET_SECTORS = ["Atendimento", "Comercial", "Financeiro", "Projetos", "Topografia", "Pós-Protocolo"];
 const TICKET_STATUSES = ["Aberto", "Em andamento", "Resolvido"];
 const MARKETING_FASE_COLORS = { 1: "var(--fase1)", 2: "var(--fase2)", 3: "var(--fase3)", 4: "var(--fase4)", 5: "var(--fase5)" };
@@ -44,6 +44,7 @@ const isConfigured = () =>
   !CONFIG.supabaseAnonKey.includes("COLE_AQUI");
 const isAdmin = () => state.profile?.perfil === "admin";
 const isMarketingTeam = () => isAdmin() || state.profile?.perfil === "marketing";
+const canManageProject = (project) => isAdmin() || project?.created_by === state.user?.id;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -90,7 +91,7 @@ function setSync(status, message) {
 }
 
 function statusBadge(status) {
-  const cls = status === "Fechado" || status === "Resolvido" ? "closed" : status === "Perdido" ? "lost" : status === "Aberto" ? "open" : "";
+  const cls = status === "Cliente Ativo" || status === "Resolvido" ? "closed" : status === "Perdido" ? "lost" : status === "Aberto" ? "open" : "";
   return `<span class="badge ${cls}">${escapeHtml(status || "-")}</span>`;
 }
 
@@ -374,7 +375,7 @@ function renderDashboard() {
   $("metricOpenTickets").textContent = state.tickets.filter((ticket) => ticket.status !== "Resolvido").length;
   $("metricPendingTasks").textContent = state.tasks.filter((task) => !task.concluida).length;
 
-  const activePipeline = state.clients.filter((client) => !["Fechado", "Perdido"].includes(client.status));
+  const activePipeline = state.clients.filter((client) => !["Cliente Ativo", "Perdido"].includes(client.status));
   const showMoney = isAdmin();
   $("pipelineValue").textContent = showMoney ? money(activePipeline.reduce((sum, client) => sum + Number(client.valor_estimado || 0), 0)) : "Restrito";
   $("pipelineValue").classList.toggle("kpi-restricted", !showMoney);
@@ -705,7 +706,8 @@ function projectCardHtml(project, { selectable = true } = {}) {
     <p class="muted">${escapeHtml(last?.descricao_cliente || project.observacoes || "Sem observações registradas.")}</p>
     <div class="project-card-actions">
       ${selectable ? `<button class="secondary small-button" type="button" data-select-project="${project.id}">Ver detalhes</button>` : ""}
-      ${isAdmin() ? `<button class="secondary small-button" type="button" data-edit-project="${project.id}">Editar</button>` : ""}
+      ${canManageProject(project) ? `<button class="secondary small-button" type="button" data-edit-project="${project.id}">Editar</button>` : ""}
+      ${isAdmin() ? `<button class="danger small-button" type="button" data-delete-project="${project.id}">Excluir</button>` : ""}
     </div>
   </article>`;
 }
@@ -772,7 +774,8 @@ function renderProjects() {
         <p class="muted">${escapeHtml(project.observacoes || "Sem observações registradas.")}</p>
         <div class="project-card-actions">
           <button class="primary small-button" type="button" data-open-project-progress="${project.id}">Ver andamentos completos</button>
-          ${isAdmin() ? `<button class="secondary small-button" type="button" data-edit-project="${project.id}">Editar projeto</button>` : ""}
+          ${canManageProject(project) ? `<button class="secondary small-button" type="button" data-edit-project="${project.id}">Editar projeto</button>` : ""}
+          ${isAdmin() ? `<button class="danger small-button" type="button" data-delete-project="${project.id}">Excluir projeto</button>` : ""}
         </div>
         ${history.length ? `<div class="project-timeline" style="margin-top:18px">
           ${history.map((item) => `<div class="project-timeline-item">
@@ -1025,6 +1028,32 @@ function renderProjectProgress() {
       <div class="progress-row-count"></div>
     </button>`;
   }).join("") : emptyState("Nenhum município encontrado.");
+}
+
+async function deleteProject(projectId) {
+  const project = projectById(projectId);
+  if (!project) return showToast("Projeto não encontrado.", "error");
+
+  const clientCount = projectClientCount(projectId);
+  const progressCount = state.projectProgress.filter((row) => row.projeto_id === projectId).length;
+  const confirmed = window.confirm(
+    `Excluir o projeto/núcleo "${project.nome}" (${project.cidade}/${project.estado})?\n\n` +
+    `Isso apaga também ${progressCount} andamento(s) registrado(s) dele${clientCount ? ` e desvincula ${clientCount} cliente(s) (eles continuam cadastrados, só perdem o vínculo com este projeto)` : ""}.\n\n` +
+    `Esta ação não pode ser desfeita.`
+  );
+  if (!confirmed) return;
+
+  const { error } = await supabase.from("projetos").delete().eq("id", projectId);
+  if (error) return showToast(error.message, "error");
+
+  if (state.projectsDrill.projetoId === projectId) state.projectsDrill.projetoId = null;
+  if (state.progressDrill.projetoId === projectId) state.progressDrill.projetoId = null;
+  if (state.projectsDrill.municipio && !state.projects.some((p) => p.id !== projectId && municipioKeyOf(p) === state.projectsDrill.municipio)) {
+    state.projectsDrill.municipio = null;
+  }
+
+  await loadData();
+  showToast("Projeto/núcleo excluído.");
 }
 
 async function deleteProjectProgress(progressId, projectId) {
@@ -1962,6 +1991,9 @@ function bindEvents() {
 
     const editProjectButton = event.target.closest("[data-edit-project]");
     if (editProjectButton) openProjectDialog(projectById(editProjectButton.dataset.editProject));
+
+    const deleteProjectButton = event.target.closest("[data-delete-project]");
+    if (deleteProjectButton) await deleteProject(deleteProjectButton.dataset.deleteProject);
 
     const openProjectProgressButton = event.target.closest("[data-open-project-progress]");
     if (openProjectProgressButton) {
