@@ -385,11 +385,11 @@
 
         <article class="panel flat">
           <p class="eyebrow">2. NUI</p>
-          <h3>Vinculação opcional</h3>
-          <label>Projeto / NUI
+          <h3>Vinculação automática</h3>
+          <label>Projeto / NUI (reserva, se o prefixo do código não for reconhecido)
             <select id="clientImportProject"><option value="">Sem NUI — vincular depois</option></select>
           </label>
-          <p class="muted small-note">Se escolher um NUI, município, estado e núcleo serão preenchidos automaticamente para todos os registros importados.</p>
+          <p class="muted small-note">O CRM identifica o prefixo do Código do Processo de cada linha (ex.: GTB01 em GTB01_0386) e preenche projeto, município, estado e núcleo automaticamente. Se um prefixo não tiver projeto cadastrado com essa sigla, é usado o Projeto/NUI selecionado aqui.</p>
         </article>
 
         <article class="panel flat">
@@ -559,7 +559,9 @@
         <label class="span-two">Nome do Projeto / Núcleo<input id="projectName" required placeholder="Ex.: Bairro Seminário" /></label>
         <label>Cidade<input id="projectCity" required /></label>
         <label>Estado<input id="projectState" maxlength="2" required placeholder="SC" /></label>
+        <label>Sigla / Prefixo do processo<input id="projectSigla" placeholder="Ex.: GTB01" /></label>
         <label>Status<select id="projectActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+        <p class="muted small-note span-two">Use o prefixo que aparece no Código do Processo dessa planilha (parte antes do "_", ex.: GTB01 em GTB01_0386). A importação usa esse prefixo para preencher município e estado automaticamente.</p>
         <label class="span-two">Observações<textarea id="projectNotes"></textarea></label>
       </div>
       <div class="dialog-actions">

@@ -47,12 +47,16 @@ create table if not exists public.projetos (
   nome text not null,
   cidade text not null,
   estado text not null check (char_length(estado) = 2),
+  sigla text,
   ativo boolean not null default true,
   observacoes text,
   created_by uuid not null references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.projetos add column if not exists sigla text;
+create unique index if not exists projetos_sigla_uidx on public.projetos (upper(sigla)) where sigla is not null;
 
 alter table public.clientes add column if not exists projeto_id uuid references public.projetos(id) on delete set null;
 alter table public.clientes add column if not exists estado text;

@@ -107,8 +107,15 @@ function isValidNickname(value) {
   return /^[a-z0-9._-]{3,30}$/.test(normalizeNickname(value));
 }
 
+function clientDisplayName(client) {
+  if (!client) return "Cliente removido";
+  const code = String(client.codigo_processo || "").trim();
+  const name = client.nome || "Sem nome";
+  return code ? `${code} — ${name}` : name;
+}
+
 function clientName(id) {
-  return state.clients.find((client) => client.id === id)?.nome || "Cliente removido";
+  return clientDisplayName(state.clients.find((client) => client.id === id));
 }
 
 function clientMunicipio(id) {
@@ -445,7 +452,7 @@ function renderClients() {
   $("nucleusFilter").value = nucleusOptions.includes(nucleus) ? nucleus : "";
 
   const filtered = state.clients.filter((client) => {
-    const haystack = [client.nome, client.municipio, client.nucleo, client.remessa, client.telefone, client.email, client.responsavel].join(" ").toLowerCase();
+    const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo, client.remessa, client.telefone, client.email, client.responsavel].join(" ").toLowerCase();
     return (!search || haystack.includes(search)) &&
       (!municipality || (client.municipio || "Sem município informado") === municipality) &&
       (!nucleus || (client.nucleo || "Sem NUI informado") === nucleus) &&
@@ -493,7 +500,7 @@ function renderClients() {
 
 function clientRow(client) {
   return `<button class="client-row" data-open-client="${client.id}">
-    <div><strong>${escapeHtml(client.nome)}</strong><span>${escapeHtml(client.telefone || client.email || "Sem contato")}</span></div>
+    <div><strong>${escapeHtml(clientDisplayName(client))}</strong><span>${escapeHtml(client.telefone || client.email || "Sem contato")}</span></div>
     <div>${statusBadge(client.status)}</div>
     <div><strong>${money(client.valor_estimado)}</strong><span>Estimado</span></div>
     <div><strong>${formatDate(client.last_contact_at)}</strong><span>Último contato</span></div>
@@ -505,7 +512,7 @@ function renderPipeline() {
   const search = $("pipelineSearch").value.trim().toLowerCase();
   const owner = $("pipelineOwnerFilter").value;
   const filtered = state.clients.filter((client) => {
-    const haystack = [client.nome, client.municipio, client.nucleo, client.remessa].join(" ").toLowerCase();
+    const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo, client.remessa].join(" ").toLowerCase();
     return (!search || haystack.includes(search)) && (!owner || client.owner_id === owner);
   });
 
@@ -513,7 +520,7 @@ function renderPipeline() {
     const list = filtered.filter((client) => client.status === status);
     return `<section class="kanban-column">
       <div class="kanban-head"><h3>${escapeHtml(status)}</h3><span>${list.length}</span></div>
-      ${list.map((client) => `<article class="kanban-card"><button data-open-client="${client.id}"><strong>${escapeHtml(client.nome)}</strong><span class="muted">${escapeHtml(client.municipio || "-")} • ${money(client.valor_estimado)}</span><p class="muted">${escapeHtml(client.nucleo || "Sem núcleo")}</p></button></article>`).join("")}
+      ${list.map((client) => `<article class="kanban-card"><button data-open-client="${client.id}"><strong>${escapeHtml(clientDisplayName(client))}</strong><span class="muted">${escapeHtml(client.municipio || "-")} • ${money(client.valor_estimado)}</span><p class="muted">${escapeHtml(client.nucleo || "Sem núcleo")}</p></button></article>`).join("")}
     </section>`;
   }).join("");
 }
@@ -1049,6 +1056,7 @@ function openProjectDialog(project = null, prefill = null) {
   $("projectName").value = project?.nome || "";
   $("projectCity").value = project?.cidade || prefill?.cidade || "";
   $("projectState").value = project?.estado || prefill?.estado || "";
+  $("projectSigla").value = project?.sigla || prefill?.sigla || "";
   $("projectActive").value = String(project?.ativo ?? true);
   $("projectNotes").value = project?.observacoes || "";
   $("projectDialog").showModal();
@@ -1061,6 +1069,7 @@ async function saveProject(event) {
     nome: $("projectName").value.trim(),
     cidade: $("projectCity").value.trim(),
     estado: $("projectState").value.trim().toUpperCase(),
+    sigla: $("projectSigla").value.trim().toUpperCase() || null,
     ativo: $("projectActive").value === "true",
     observacoes: $("projectNotes").value.trim() || null,
   };
@@ -1388,7 +1397,7 @@ function renderClientDetail(clientId) {
   state.selectedClientId = clientId;
 
   $("detailLocation").textContent = client.municipio || "Sem município";
-  $("detailName").textContent = client.nome;
+  $("detailName").textContent = clientDisplayName(client);
   const linkedProject = clientProject(client);
   $("detailSubtitle").textContent = linkedProject ? `${linkedProject.nome} • ${linkedProject.cidade}/${linkedProject.estado} • Remessa: ${client.remessa || "-"}` : `Núcleo: ${client.nucleo || "-"} • Remessa: ${client.remessa || "-"}`;
   $("detailStatus").innerHTML = statusBadge(client.status);
@@ -1442,10 +1451,36 @@ function extractImportPhones(value) {
   return matches.map((item) => item.replace(/\D/g, "")).filter(Boolean);
 }
 
-function importProjectData() {
-  const project = projectById($("clientImportProject")?.value || "");
+function projectDataFrom(project) {
   if (!project) return { projeto_id: null, estado: null, municipio: null, nucleo: null };
   return { projeto_id: project.id, estado: project.estado || null, municipio: project.cidade || null, nucleo: project.nome || null };
+}
+
+// Prefixo do Código do Processo (parte antes do "_"), ex.: "GTB01" em "GTB01_0386".
+function importCodePrefix(codigoProcesso) {
+  const code = cleanImportText(codigoProcesso).toUpperCase();
+  if (!code) return "";
+  return code.split("_")[0].trim();
+}
+
+function projectBySigla(prefix) {
+  if (!prefix) return null;
+  return state.projects.find((project) => (project.sigla || "").trim().toUpperCase() === prefix) || null;
+}
+
+function importProjectData() {
+  // Projeto/NUI escolhido manualmente no passo 2 — usado como reserva quando
+  // o prefixo do Código do Processo da linha não bate com nenhuma sigla cadastrada.
+  return projectDataFrom(projectById($("clientImportProject")?.value || ""));
+}
+
+// Resolve município/estado/NUI de uma linha: primeiro tenta casar o prefixo do
+// Código do Processo com a sigla de um projeto; se não encontrar, usa a reserva.
+function resolveImportProjectData(row, fallbackProjectData) {
+  const prefix = importCodePrefix(row.CodigoProcesso);
+  const matched = projectBySigla(prefix);
+  if (matched) return { data: projectDataFrom(matched), matched: true, prefix };
+  return { data: fallbackProjectData, matched: false, prefix };
 }
 
 function openClientImport() {
@@ -1490,11 +1525,16 @@ function renderClientImportPreview() {
   $("clientImportSummary").innerHTML = `<strong>${rows.length}</strong> linha(s) pronta(s) para validação • ${recognized.length}/${IMPORT_KNOWN_HEADERS.length} colunas reconhecidas.`;
   $("clientImportSummary").classList.remove("hidden");
   const sample = rows.slice(0, 12);
+  const fallbackProjectData = importProjectData();
   $("clientImportPreview").innerHTML = `
     <div class="import-preview-head"><strong>Prévia</strong><span>Mostrando ${sample.length} de ${rows.length}</span></div>
     <div class="import-table-wrap"><table class="import-table">
-      <thead><tr><th>Código</th><th>Requerente</th><th>Contato</th><th>Situação</th></tr></thead>
-      <tbody>${sample.map((row) => `<tr><td>${escapeHtml(cleanImportText(row.CodigoProcesso))}</td><td>${escapeHtml(cleanApplicantName(row.Requerente))}</td><td>${escapeHtml(cleanImportText(row.Contato))}</td><td>${escapeHtml(cleanImportText(row.Situacao))}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>Código</th><th>Requerente</th><th>Contato</th><th>Município/UF detectado</th><th>Situação</th></tr></thead>
+      <tbody>${sample.map((row) => {
+        const resolved = resolveImportProjectData(row, fallbackProjectData);
+        const location = resolved.data.municipio ? `${resolved.data.municipio}/${resolved.data.estado || "-"}` : (resolved.prefix ? `Prefixo "${resolved.prefix}" sem projeto cadastrado` : "Não identificado");
+        return `<tr><td>${escapeHtml(cleanImportText(row.CodigoProcesso))}</td><td>${escapeHtml(cleanApplicantName(row.Requerente))}</td><td>${escapeHtml(cleanImportText(row.Contato))}</td><td>${escapeHtml(location)}</td><td>${escapeHtml(cleanImportText(row.Situacao))}</td></tr>`;
+      }).join("")}</tbody>
     </table></div>`;
   $("clientImportPreview").classList.remove("hidden");
   $("clientImportRun").disabled = rows.length === 0;
@@ -1536,16 +1576,20 @@ function importPayloadFromRow(row, projectData) {
 async function runClientImport() {
   if (!state.importRows.length) return;
   const mode = $("clientImportMode").value;
-  const projectData = importProjectData();
+  const fallbackProjectData = importProjectData();
   const button = $("clientImportRun");
   button.disabled = true;
   setSync("loading", "Importando Excel...");
-  let created = 0, updated = 0, skipped = 0, failed = 0;
+  let created = 0, updated = 0, skipped = 0, failed = 0, autoLocated = 0;
   const errors = [];
+  const unmatchedPrefixes = new Set();
 
   for (let i = 0; i < state.importRows.length; i += 1) {
     const row = state.importRows[i];
-    const payload = importPayloadFromRow(row, projectData);
+    const resolved = resolveImportProjectData(row, fallbackProjectData);
+    if (resolved.matched) autoLocated += 1;
+    else if (resolved.prefix && !resolved.data.municipio) unmatchedPrefixes.add(resolved.prefix);
+    const payload = importPayloadFromRow(row, resolved.data);
     try {
       let existing = null;
       if (payload.codigo_processo) {
@@ -1574,7 +1618,10 @@ async function runClientImport() {
     }
   }
 
-  $("clientImportSummary").innerHTML = `<strong>Importação concluída.</strong> Criados: ${created} • Atualizados: ${updated} • Ignorados: ${skipped} • Erros: ${failed}${errors.length ? `<details><summary>Ver erros</summary><pre>${escapeHtml(errors.slice(0, 50).join("\n"))}</pre></details>` : ""}`;
+  const unmatchedNote = unmatchedPrefixes.size
+    ? `<p class="muted small-note">Prefixos sem projeto cadastrado (município/estado não preenchidos automaticamente): ${escapeHtml([...unmatchedPrefixes].join(", "))}. Cadastre a sigla em Projetos/NUIs para as próximas importações.</p>`
+    : "";
+  $("clientImportSummary").innerHTML = `<strong>Importação concluída.</strong> Criados: ${created} • Atualizados: ${updated} • Ignorados: ${skipped} • Erros: ${failed} • Município/UF detectados automaticamente: ${autoLocated}/${state.importRows.length}${errors.length ? `<details><summary>Ver erros</summary><pre>${escapeHtml(errors.slice(0, 50).join("\n"))}</pre></details>` : ""}${unmatchedNote}`;
   await loadData();
   setSync("", "Sincronizado");
   button.disabled = false;
@@ -1669,7 +1716,7 @@ function setupClientPicker(prefix) {
     const query = term.trim().toLowerCase();
     if (!query) return close();
     const matches = state.clients.filter((client) => {
-      const haystack = [client.nome, client.municipio, client.nucleo].join(" ").toLowerCase();
+      const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo].join(" ").toLowerCase();
       return haystack.includes(query);
     }).slice(0, 8);
 
@@ -1681,7 +1728,7 @@ function setupClientPicker(prefix) {
 
     results.innerHTML = matches.map((client) => `
       <button type="button" class="client-picker-option" data-pick-client="${client.id}">
-        <strong>${escapeHtml(client.nome)}</strong>
+        <strong>${escapeHtml(clientDisplayName(client))}</strong>
         <span>${escapeHtml(client.municipio || "Sem município")} • ${escapeHtml(client.nucleo || "Sem NUI")}</span>
       </button>`).join("");
     results.classList.remove("hidden");
@@ -1699,7 +1746,7 @@ function setupClientPicker(prefix) {
     const client = state.clients.find((item) => item.id === option.dataset.pickClient);
     if (!client) return;
     hidden.value = client.id;
-    input.value = `${client.nome} — ${client.municipio || "Sem município"} / ${client.nucleo || "Sem NUI"}`;
+    input.value = `${clientDisplayName(client)} — ${client.municipio || "Sem município"} / ${client.nucleo || "Sem NUI"}`;
     close();
   });
 
@@ -1852,6 +1899,7 @@ function bindEvents() {
   $("newClientButton").addEventListener("click", openNewClient);
   $("importClientsButton").addEventListener("click", openClientImport);
   $("clientImportFile").addEventListener("change", parseClientImportFile);
+  $("clientImportProject").addEventListener("change", () => { if (state.importRows.length) renderClientImportPreview(); });
   $("clientImportRun").addEventListener("click", runClientImport);
   $("clientForm").addEventListener("submit", saveClient);
   $("deleteClientButton").addEventListener("click", deleteClient);
