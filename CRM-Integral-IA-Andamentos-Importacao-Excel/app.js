@@ -656,6 +656,11 @@ function renderUsers() {
           <option value="false" ${!profile.ativo ? "selected" : ""}>Desativado</option>
         </select>
       </label>
+
+      <div class="user-action-cell">
+        <span class="mobile-field-label">Senha</span>
+        <button type="button" class="secondary small-button" data-reset-password="${profile.id}">Redefinir senha</button>
+      </div>
     </article>`;
   }).join("") : emptyState("Nenhum usuário encontrado.");
 }
@@ -1873,6 +1878,90 @@ async function createUser(event) {
   await loadData();
 }
 
+function openChangePasswordDialog() {
+  $("changePasswordForm").reset();
+  $("changePasswordMessage").className = "form-message";
+  $("changePasswordMessage").textContent = "";
+  $("changePasswordDialog").showModal();
+}
+
+async function changeOwnPassword(event) {
+  event.preventDefault();
+  const message = $("changePasswordMessage");
+  message.className = "form-message";
+
+  const pass1 = $("changePasswordNew").value;
+  const pass2 = $("changePasswordConfirm").value;
+
+  if (pass1.length < 8) {
+    message.textContent = "A senha deve ter pelo menos 8 caracteres.";
+    return;
+  }
+  if (pass1 !== pass2) {
+    message.textContent = "As senhas não coincidem.";
+    return;
+  }
+
+  message.textContent = "Salvando...";
+  const { error } = await supabase.auth.updateUser({ password: pass1 });
+
+  if (error) {
+    message.textContent = error.message || "Não foi possível alterar a senha.";
+    return;
+  }
+
+  message.className = "form-message success";
+  message.textContent = "Senha alterada com sucesso.";
+  event.target.reset();
+  showToast("Senha alterada com sucesso.");
+  setTimeout(() => $("changePasswordDialog").close(), 900);
+}
+
+function openResetPasswordDialog(profile) {
+  if (!profile) return;
+  $("resetPasswordForm").reset();
+  $("resetPasswordUserId").value = profile.id;
+  $("resetPasswordUserLabel").textContent = `${profile.nome || "Usuário"}${profile.apelido ? ` (@${profile.apelido})` : ""}`;
+  $("resetPasswordMessage").className = "form-message";
+  $("resetPasswordMessage").textContent = "";
+  $("resetPasswordDialog").showModal();
+}
+
+async function submitResetPassword(event) {
+  event.preventDefault();
+  const message = $("resetPasswordMessage");
+  message.className = "form-message";
+
+  const userId = $("resetPasswordUserId").value;
+  const pass1 = $("resetPasswordNew").value;
+  const pass2 = $("resetPasswordConfirm").value;
+
+  if (pass1.length < 8) {
+    message.textContent = "A senha deve ter pelo menos 8 caracteres.";
+    return;
+  }
+  if (pass1 !== pass2) {
+    message.textContent = "As senhas não coincidem.";
+    return;
+  }
+
+  message.textContent = "Salvando...";
+
+  const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+    body: { user_id: userId, password: pass1 },
+  });
+
+  if (error || data?.error) {
+    message.textContent = data?.error || error?.message || "Não foi possível redefinir a senha. Confirme se a Edge Function foi publicada.";
+    return;
+  }
+
+  message.className = "form-message success";
+  message.textContent = "Senha redefinida com sucesso.";
+  showToast("Senha do usuário redefinida.");
+  setTimeout(() => $("resetPasswordDialog").close(), 900);
+}
+
 async function updateUserProfile(id, patch) {
   if (id === state.user.id && patch.ativo === false) return showToast("Você não pode desativar seu próprio usuário.", "error");
   const { error } = await supabase.from("profiles").update(patch).eq("id", id);
@@ -1924,6 +2013,9 @@ function bindEvents() {
   });
 
   $("logoutButton").addEventListener("click", () => supabase.auth.signOut());
+  $("changePasswordButton").addEventListener("click", openChangePasswordDialog);
+  $("changePasswordForm").addEventListener("submit", changeOwnPassword);
+  $("resetPasswordForm").addEventListener("submit", submitResetPassword);
   $("refreshButton").addEventListener("click", loadData);
   $("newClientButton").addEventListener("click", openNewClient);
   $("importClientsButton").addEventListener("click", openClientImport);
@@ -2066,6 +2158,12 @@ function bindEvents() {
 
     const marketingEtapaButton = event.target.closest("[data-toggle-marketing-etapa]");
     if (marketingEtapaButton && marketingEtapaButton.dataset.toggleMarketingEtapa) toggleMarketingEtapa(marketingEtapaButton.dataset.toggleMarketingEtapa);
+
+    const resetPasswordButton = event.target.closest("[data-reset-password]");
+    if (resetPasswordButton) {
+      const profile = state.profiles.find((item) => item.id === resetPasswordButton.dataset.resetPassword);
+      openResetPasswordDialog(profile);
+    }
   });
 
   document.addEventListener("change", (event) => {

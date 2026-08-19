@@ -24,3 +24,9 @@ enable_signup = false
 
 [functions.admin-create-user]
 verify_jwt = false
+
+[functions.login-username]
+verify_jwt = false
+
+[functions.admin-reset-password]
+verify_jwt = false

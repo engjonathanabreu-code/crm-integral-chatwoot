@@ -552,9 +552,9 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
 .users-count-card { min-width: 80px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius); padding: 9px 13px; text-align: center; }
 .users-count-card strong { display: block; font-size: 1.2rem; font-weight: 650; }
 .users-count-card span { display: block; font-size: .7rem; color: var(--muted); }
-.users-list-head { display: grid; grid-template-columns: minmax(200px, 1.15fr) minmax(210px, 1.5fr) 150px 130px; gap: 14px; padding: 11px 13px; color: var(--muted); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.users-list-head { display: grid; grid-template-columns: minmax(200px, 1.15fr) minmax(210px, 1.5fr) 150px 130px 140px; gap: 14px; padding: 11px 13px; color: var(--muted); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .users-table-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.user-table-row { display: grid; grid-template-columns: minmax(200px, 1.15fr) minmax(210px, 1.5fr) 150px 130px; gap: 14px; align-items: center; padding: 12px 13px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.user-table-row { display: grid; grid-template-columns: minmax(200px, 1.15fr) minmax(210px, 1.5fr) 150px 130px 140px; gap: 14px; align-items: center; padding: 12px 13px; border-bottom: 1px solid var(--border); background: var(--panel); }
 .user-table-row:last-child { border-bottom: 0; }
 .user-table-row:hover { background: var(--surface-2); }
 .user-identity-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }

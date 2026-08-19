@@ -84,6 +84,7 @@
 
       <div class="sidebar-footer">
         <button id="refreshButton" class="ghost full">Atualizar dados</button>
+        <button id="changePasswordButton" class="ghost full">Alterar senha</button>
         <button id="logoutButton" class="ghost full">Sair</button>
       </div>
     </aside>
@@ -313,6 +314,7 @@
               <span>Nome completo</span>
               <span>Perfil</span>
               <span>Status</span>
+              <span>Senha</span>
             </div>
             <div id="usersList" class="users-table-list"></div>
           </article>
@@ -657,6 +659,46 @@
       <div id="marketingJourneyProgress" class="marketing-journey-progress"></div>
       <div id="marketingJourneyPhases" class="marketing-journey-phases"></div>
     </div>
+  </dialog>
+
+  <dialog id="changePasswordDialog" class="dialog medium-dialog">
+    <form id="changePasswordForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Minha conta</p><h2>Alterar senha</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="changePasswordDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Nova senha<input id="changePasswordNew" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <label class="span-two">Confirmar nova senha<input id="changePasswordConfirm" type="password" minlength="8" required autocomplete="new-password" /></label>
+      </div>
+      <p id="changePasswordMessage" class="form-message"></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="changePasswordDialog">Cancelar</button>
+        <button class="primary" type="submit">Salvar nova senha</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="resetPasswordDialog" class="dialog medium-dialog">
+    <form id="resetPasswordForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Equipe</p><h2>Redefinir senha</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="resetPasswordDialog">×</button>
+      </div>
+      <input type="hidden" id="resetPasswordUserId" />
+      <p class="muted">Usuário: <strong id="resetPasswordUserLabel">-</strong></p>
+      <div class="form-grid two">
+        <label class="span-two">Nova senha<input id="resetPasswordNew" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <label class="span-two">Confirmar nova senha<input id="resetPasswordConfirm" type="password" minlength="8" required autocomplete="new-password" /></label>
+      </div>
+      <p id="resetPasswordMessage" class="form-message"></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="resetPasswordDialog">Cancelar</button>
+        <button class="primary" type="submit">Redefinir senha</button>
+      </div>
+    </form>
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
