@@ -1557,7 +1557,12 @@ function importCodePrefix(codigoProcesso) {
 
 function projectBySigla(prefix) {
   if (!prefix) return null;
-  return state.projects.find((project) => (project.sigla || "").trim().toUpperCase() === prefix) || null;
+  // A sigla não é mais única — projetos diferentes podem compartilhar o mesmo
+  // prefixo. Quando houver mais de um, prioriza um projeto ativo para reduzir
+  // ambiguidade na importação; se nenhum ativo bater, usa o primeiro que achar.
+  const matches = state.projects.filter((project) => (project.sigla || "").trim().toUpperCase() === prefix);
+  if (!matches.length) return null;
+  return matches.find((project) => project.ativo) || matches[0];
 }
 
 function importProjectData() {

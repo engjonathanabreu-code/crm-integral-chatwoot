@@ -56,7 +56,7 @@ create table if not exists public.projetos (
 );
 
 alter table public.projetos add column if not exists sigla text;
-create unique index if not exists projetos_sigla_uidx on public.projetos (upper(sigla)) where sigla is not null;
+-- A sigla NÃO precisa ser única: projetos diferentes podem compartilhar o mesmo código/prefixo de processo.
 
 alter table public.clientes add column if not exists projeto_id uuid references public.projetos(id) on delete set null;
 alter table public.clientes add column if not exists estado text;
