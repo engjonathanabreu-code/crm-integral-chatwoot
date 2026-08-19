@@ -180,12 +180,63 @@ function extractCity(payload) {
   return customAttrs(payload).ia_cidade || null;
 }
 
+const SETORES_VALIDOS = [
+  "Atendimento",
+  "Comercial",
+  "Financeiro",
+  "Projetos",
+  "Topografia",
+  "Pós-Protocolo",
+];
+
+const SETOR_ALIASES = new Map([
+  ["atendimento", "Atendimento"],
+  ["comercial", "Comercial"],
+  ["vendas", "Comercial"],
+  ["financeiro", "Financeiro"],
+  ["cobranca", "Financeiro"],
+  ["projetos", "Projetos"],
+  ["projeto", "Projetos"],
+  ["topografia", "Topografia"],
+  ["topografico", "Topografia"],
+  ["pos-protocolo", "Pós-Protocolo"],
+  ["pos protocolo", "Pós-Protocolo"],
+]);
+
+function stripAccents(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeSetor(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  if (SETORES_VALIDOS.includes(raw)) {
+    return raw;
+  }
+
+  const key = stripAccents(raw).toLowerCase().trim();
+
+  return SETOR_ALIASES.get(key) || null;
+}
+
 function extractSector(payload) {
-  return (
+  const raw =
     customAttrs(payload).ia_setor ||
     getConversation(payload)?.meta?.team?.name ||
-    null
-  );
+    null;
+
+  // Setores podem chegar em minúsculas (nome bruto do time no Chatwoot,
+  // ex.: "comercial"), enquanto a coluna "setor" em atendimentos exige um
+  // dos valores canônicos ("Comercial", etc.) por causa da check constraint
+  // atendimentos_setor_check. Normalizamos aqui para nunca quebrar o
+  // insert/update e para manter a exibição consistente no CRM.
+  return normalizeSetor(raw);
 }
 
 function extractAgent(payload) {
@@ -312,15 +363,41 @@ async function findOrCreateClient(payload) {
   const existing = await findClientByPhoneOrContact(phone, contactId);
 
   if (existing) {
-    const data = await sb(`clientes?id=eq.${existing.id}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    });
+    try {
+      const data = await sb(`clientes?id=eq.${existing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
 
-    return data?.[0] || {
-      ...existing,
-      ...patch,
-    };
+      return data?.[0] || {
+        ...existing,
+        ...patch,
+      };
+    } catch (error) {
+      if (error.status !== 409) {
+        throw error;
+      }
+
+      // O chatwoot_contact_id desta mensagem já pertence a OUTRO cliente
+      // (contato duplicado no Chatwoot, mesmo telefone em dois registros
+      // etc.). Em vez de derrubar o webhook inteiro, atualizamos o cliente
+      // encontrado sem sobrescrever o vínculo de contato conflitante.
+      console.warn(
+        "CONFLITO DE chatwoot_contact_id AO ATUALIZAR CLIENTE EXISTENTE. Atualizando sem sobrescrever o vínculo do contato."
+      );
+
+      const { chatwoot_contact_id, ...safePatch } = patch;
+
+      const data = await sb(`clientes?id=eq.${existing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(safePatch),
+      });
+
+      return data?.[0] || {
+        ...existing,
+        ...safePatch,
+      };
+    }
   }
 
   try {
