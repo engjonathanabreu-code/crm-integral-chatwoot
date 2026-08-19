@@ -32,6 +32,7 @@ const state = {
   tasksVisible: LIST_PAGE_SIZE,
   importRows: [],
   importHeaders: [],
+  importTemplate: null,
 };
 
 let supabase = null;
@@ -1445,6 +1446,8 @@ function renderClientDetail(clientId) {
     ["Núcleo", client.nucleo || "-"], ["Remessa", client.remessa || "-"], ["Origem", client.origem || "-"],
     ["Canal", client.canal || "CRM"], ["Último setor", client.ultimo_setor || "-"], ["Último agente", client.ultimo_agente || "-"],
     ["Responsável operacional", client.responsavel || "-"], ["Dono do registro", profileName(client.owner_id)], ["Código do processo", client.codigo_processo || "-"],
+    ["CPF", client.cpf || "-"], ["Endereço", client.endereco || "-"], ["Tipo de imóvel", client.tipo_imovel || "-"],
+    ["Tipo de posse", client.tipo_posse || "-"], ["Área da posse", client.area_posse || "-"],
     ["Estado civil", client.estado_civil || "-"], ["Tipo documental", client.tipo_documental || "-"], ["Contrato", client.contrato_status || "-"],
     ["Procuração", client.procuracao_status || "-"], ["Requerimento", client.requerimento_status || "-"], ["Distrato", client.distrato_status || "-"],
     ["Documento faltante", client.documento_faltante || "-"], ["Informação faltante", client.informacao_faltante || "-"],
@@ -1467,8 +1470,29 @@ function renderClientDetail(clientId) {
 }
 
 
-const IMPORT_REQUIRED_HEADERS = ["CodigoProcesso", "Requerente", "Contato"];
-const IMPORT_KNOWN_HEADERS = ["CodigoProcesso", "Requerente", "Contato", "EstadoCivil", "Tipo", "Contrato", "Procuracao", "Requerimento", "Distrato", "DocumentoFaltante", "InformacaoFaltante", "Observacao", "Situacao"];
+/*
+Modelos de planilha reconhecidos na importação:
+- "gtb": planilha "Dados Documental GTB" (Requerente, EstadoCivil, Contrato, Procuracao, Requerimento, Distrato...).
+- "nui": planilha por Beneficiário/NUI (Agrolândia e similares — Beneficiarios, CodigoNUI, Localizacao, Objeto, Posse, AreaPosse).
+*/
+const IMPORT_TEMPLATES = {
+  gtb: {
+    label: "Dados Documental GTB",
+    required: ["CodigoProcesso", "Requerente", "Contato"],
+    known: ["CodigoProcesso", "Requerente", "Contato", "EstadoCivil", "Tipo", "Contrato", "Procuracao", "Requerimento", "Distrato", "DocumentoFaltante", "InformacaoFaltante", "Observacao", "Situacao"],
+  },
+  nui: {
+    label: "Beneficiários / NUI",
+    required: ["CodigoProcesso", "Beneficiarios", "Contato"],
+    known: ["CodigoProcesso", "CodigoNUI", "Beneficiarios", "Contato", "Localizacao", "Objeto", "Posse", "AreaPosse", "Situacao"],
+  },
+};
+
+function detectImportTemplate(headers) {
+  if (IMPORT_TEMPLATES.nui.required.every((header) => headers.includes(header))) return "nui";
+  if (IMPORT_TEMPLATES.gtb.required.every((header) => headers.includes(header))) return "gtb";
+  return null;
+}
 
 function cleanImportText(value) {
   if (value === null || value === undefined) return "";
@@ -1477,6 +1501,33 @@ function cleanImportText(value) {
 
 function cleanApplicantName(value) {
   return cleanImportText(value).replace(/;\s*$/, "");
+}
+
+// "Daniela Raquel Schmoegel da Silva (CPF 907.755.979-53); Fulano (CPF 000...)"
+// -> nomes separados e CPFs separados, na mesma ordem.
+function parseBeneficiarios(value) {
+  const raw = cleanImportText(value).replace(/;\s*$/, "");
+  if (!raw) return { names: [], cpfs: [] };
+
+  const names = [];
+  const cpfs = [];
+
+  raw.split(";").map((part) => part.trim()).filter(Boolean).forEach((part) => {
+    const match = part.match(/^(.*?)\s*\(\s*CPF[:\s]*([\d.\-\/]+)\s*\)\s*$/i);
+    if (match) {
+      names.push(match[1].trim());
+      cpfs.push(match[2].trim());
+    } else {
+      names.push(part);
+    }
+  });
+
+  return { names, cpfs };
+}
+
+function extractRowApplicantName(row, template) {
+  if (template === "nui") return parseBeneficiarios(row.Beneficiarios).names.join("; ");
+  return cleanApplicantName(row.Requerente);
 }
 
 function extractImportPhones(value) {
@@ -1520,6 +1571,7 @@ function resolveImportProjectData(row, fallbackProjectData) {
 function openClientImport() {
   state.importRows = [];
   state.importHeaders = [];
+  state.importTemplate = null;
   $("clientImportFile").value = "";
   $("clientImportRun").disabled = true;
   $("clientImportSummary").classList.add("hidden");
@@ -1538,13 +1590,18 @@ async function parseClientImportFile(event) {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
     const headers = rows.length ? Object.keys(rows[0]) : [];
-    const missing = IMPORT_REQUIRED_HEADERS.filter((header) => !headers.includes(header));
-    if (missing.length) {
+    const template = detectImportTemplate(headers);
+    if (!template) {
       state.importRows = [];
+      state.importTemplate = null;
       $("clientImportRun").disabled = true;
-      return showToast(`Planilha inválida. Faltam: ${missing.join(", ")}.`, "error");
+      return showToast(
+        `Planilha não reconhecida. Colunas esperadas: "${IMPORT_TEMPLATES.gtb.required.join(", ")}" (modelo ${IMPORT_TEMPLATES.gtb.label}) ou "${IMPORT_TEMPLATES.nui.required.join(", ")}" (modelo ${IMPORT_TEMPLATES.nui.label}).`,
+        "error"
+      );
     }
-    state.importRows = rows.filter((row) => cleanImportText(row.Requerente) || cleanImportText(row.CodigoProcesso));
+    state.importTemplate = template;
+    state.importRows = rows.filter((row) => extractRowApplicantName(row, template) || cleanImportText(row.CodigoProcesso));
     state.importHeaders = headers;
     renderClientImportPreview();
   } catch (error) {
@@ -1555,33 +1612,35 @@ async function parseClientImportFile(event) {
 
 function renderClientImportPreview() {
   const rows = state.importRows;
-  const recognized = IMPORT_KNOWN_HEADERS.filter((header) => state.importHeaders.includes(header));
-  $("clientImportSummary").innerHTML = `<strong>${rows.length}</strong> linha(s) pronta(s) para validação • ${recognized.length}/${IMPORT_KNOWN_HEADERS.length} colunas reconhecidas.`;
+  const template = state.importTemplate;
+  const templateConfig = IMPORT_TEMPLATES[template] || IMPORT_TEMPLATES.gtb;
+  const recognized = templateConfig.known.filter((header) => state.importHeaders.includes(header));
+  $("clientImportSummary").innerHTML = `<strong>${rows.length}</strong> linha(s) pronta(s) para validação • modelo detectado: <strong>${escapeHtml(templateConfig.label)}</strong> • ${recognized.length}/${templateConfig.known.length} colunas reconhecidas.`;
   $("clientImportSummary").classList.remove("hidden");
   const sample = rows.slice(0, 12);
   const fallbackProjectData = importProjectData();
+  const nameHeader = template === "nui" ? "Beneficiário(s)" : "Requerente";
   $("clientImportPreview").innerHTML = `
     <div class="import-preview-head"><strong>Prévia</strong><span>Mostrando ${sample.length} de ${rows.length}</span></div>
     <div class="import-table-wrap"><table class="import-table">
-      <thead><tr><th>Código</th><th>Requerente</th><th>Contato</th><th>Município/UF detectado</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Código</th><th>${escapeHtml(nameHeader)}</th><th>Contato</th><th>Município/UF detectado</th><th>Situação</th></tr></thead>
       <tbody>${sample.map((row) => {
         const resolved = resolveImportProjectData(row, fallbackProjectData);
         const location = resolved.data.municipio ? `${resolved.data.municipio}/${resolved.data.estado || "-"}` : (resolved.prefix ? `Prefixo "${resolved.prefix}" sem projeto cadastrado` : "Não identificado");
-        return `<tr><td>${escapeHtml(cleanImportText(row.CodigoProcesso))}</td><td>${escapeHtml(cleanApplicantName(row.Requerente))}</td><td>${escapeHtml(cleanImportText(row.Contato))}</td><td>${escapeHtml(location)}</td><td>${escapeHtml(cleanImportText(row.Situacao))}</td></tr>`;
+        return `<tr><td>${escapeHtml(cleanImportText(row.CodigoProcesso))}</td><td>${escapeHtml(extractRowApplicantName(row, template))}</td><td>${escapeHtml(cleanImportText(row.Contato))}</td><td>${escapeHtml(location)}</td><td>${escapeHtml(cleanImportText(row.Situacao))}</td></tr>`;
       }).join("")}</tbody>
     </table></div>`;
   $("clientImportPreview").classList.remove("hidden");
   $("clientImportRun").disabled = rows.length === 0;
 }
 
-function importPayloadFromRow(row, projectData) {
+function importPayloadFromRow(row, projectData, template) {
   const phones = extractImportPhones(row.Contato);
   const primary = phones[0] || null;
-  const notes = [cleanImportText(row.Observacao), cleanImportText(row.InformacaoFaltante)].filter(Boolean).join("\n");
-  return {
+
+  const base = {
     owner_id: state.user.id,
     created_by: state.user.id,
-    nome: cleanApplicantName(row.Requerente) || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
     telefone: cleanImportText(row.Contato) || null,
     telefone_normalizado: primary,
     email: null,
@@ -1591,8 +1650,31 @@ function importPayloadFromRow(row, projectData) {
     status: "Contato feito",
     valor_estimado: 0,
     responsavel: null,
-    observacoes: notes || null,
     codigo_processo: cleanImportText(row.CodigoProcesso) || null,
+    situacao_documental: cleanImportText(row.Situacao) || null,
+  };
+
+  if (template === "nui") {
+    const { names, cpfs } = parseBeneficiarios(row.Beneficiarios);
+    return {
+      ...base,
+      nome: names.join("; ") || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
+      nucleo: cleanImportText(row.CodigoNUI) || base.nucleo || null,
+      cpf: cpfs.join("; ") || null,
+      endereco: cleanImportText(row.Localizacao) || null,
+      tipo_imovel: cleanImportText(row.Objeto) || null,
+      tipo_posse: cleanImportText(row.Posse) || null,
+      area_posse: cleanImportText(row.AreaPosse) || null,
+      observacoes: null,
+      importacao_origem: "Beneficiários / NUI",
+    };
+  }
+
+  const notes = [cleanImportText(row.Observacao), cleanImportText(row.InformacaoFaltante)].filter(Boolean).join("\n");
+  return {
+    ...base,
+    nome: cleanApplicantName(row.Requerente) || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
+    observacoes: notes || null,
     estado_civil: cleanImportText(row.EstadoCivil) || null,
     tipo_documental: cleanImportText(row.Tipo) || null,
     contrato_status: cleanImportText(row.Contrato) || null,
@@ -1602,7 +1684,6 @@ function importPayloadFromRow(row, projectData) {
     documento_faltante: cleanImportText(row.DocumentoFaltante) || null,
     informacao_faltante: cleanImportText(row.InformacaoFaltante) || null,
     observacao_documental: cleanImportText(row.Observacao) || null,
-    situacao_documental: cleanImportText(row.Situacao) || null,
     importacao_origem: "Dados Documental GTB",
   };
 }
@@ -1623,7 +1704,7 @@ async function runClientImport() {
     const resolved = resolveImportProjectData(row, fallbackProjectData);
     if (resolved.matched) autoLocated += 1;
     else if (resolved.prefix && !resolved.data.municipio) unmatchedPrefixes.add(resolved.prefix);
-    const payload = importPayloadFromRow(row, resolved.data);
+    const payload = importPayloadFromRow(row, resolved.data, state.importTemplate);
     try {
       let existing = null;
       if (payload.codigo_processo) {

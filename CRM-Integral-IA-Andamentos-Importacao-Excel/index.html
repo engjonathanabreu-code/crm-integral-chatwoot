@@ -370,7 +370,7 @@
         <div>
           <p class="eyebrow">Importação em massa</p>
           <h2>Importar clientes por Excel</h2>
-          <p class="muted">Compatível com a planilha Dados Documental GTB. O NUI é opcional e pode ser alterado depois.</p>
+          <p class="muted">Compatível com o modelo Dados Documental GTB e com o modelo Beneficiários/NUI (Localizacao, Objeto, Posse, AreaPosse). O NUI é opcional e pode ser alterado depois.</p>
         </div>
         <button type="button" class="icon-button" data-close-dialog="clientImportDialog">×</button>
       </div>
@@ -382,7 +382,8 @@
           <label>Excel ou CSV
             <input id="clientImportFile" type="file" accept=".xlsx,.xls,.csv" />
           </label>
-          <p class="muted small-note">Colunas reconhecidas: CodigoProcesso, Requerente, Contato, EstadoCivil, Tipo, Contrato, Procuracao, Requerimento, Distrato, DocumentoFaltante, InformacaoFaltante, Observacao e Situacao.</p>
+          <p class="muted small-note">Modelo Documental: CodigoProcesso, Requerente, Contato, EstadoCivil, Tipo, Contrato, Procuracao, Requerimento, Distrato, DocumentoFaltante, InformacaoFaltante, Observacao, Situacao.</p>
+          <p class="muted small-note">Modelo Beneficiários/NUI: CodigoProcesso, CodigoNUI, Beneficiarios, Contato, Localizacao, Objeto, Posse, AreaPosse, Situacao. O modelo é detectado automaticamente pelas colunas do arquivo.</p>
         </article>
 
         <article class="panel flat">
