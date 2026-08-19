@@ -97,7 +97,7 @@ function statusBadge(status) {
 
 function profileName(id) {
   const profile = state.profiles.find((item) => item.id === id) || (id === state.user?.id ? state.profile : null);
-  return profile?.apelido || profile?.nome || "Usuário";
+  return profile?.nome || profile?.apelido || "Usuário";
 }
 
 function normalizeNickname(value) {
