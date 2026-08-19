@@ -561,6 +561,7 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
 .user-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; font-size: .78rem; }
 .user-identity-cell > div { min-width: 0; flex: 1; }
 .user-nickname-input { width: 100%; min-height: 32px !important; padding: 6px 9px !important; font-weight: 650; }
+.user-fullname-input { width: 100%; min-height: 32px !important; padding: 6px 9px !important; font-weight: 600; }
 .user-identity-cell small, .user-fullname-cell span { display: block; color: var(--muted); font-size: .7rem; margin-top: 3px; }
 .user-fullname-cell { min-width: 0; }
 .user-fullname-cell strong { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

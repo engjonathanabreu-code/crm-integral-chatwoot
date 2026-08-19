@@ -637,7 +637,14 @@ function renderUsers() {
       </div>
 
       <div class="user-fullname-cell">
-        <strong>${escapeHtml(profile.nome)}</strong>
+        <input
+          class="user-fullname-input"
+          data-user-fullname="${profile.id}"
+          value="${escapeHtml(profile.nome || "")}"
+          placeholder="Nome completo"
+          maxlength="120"
+          aria-label="Nome completo"
+        />
         <span>Criado em ${formatDate(profile.created_at)}</span>
       </div>
 
@@ -2248,6 +2255,17 @@ function bindEvents() {
   });
 
   document.addEventListener("change", (event) => {
+    const fullnameInput = event.target.closest("[data-user-fullname]");
+    if (fullnameInput) {
+      const nome = fullnameInput.value.trim();
+      if (!nome) {
+        showToast("O nome completo não pode ficar em branco.", "error");
+        renderUsers();
+      } else {
+        updateUserProfile(fullnameInput.dataset.userFullname, { nome });
+      }
+    }
+
     const nicknameInput = event.target.closest("[data-user-nickname]");
     if (nicknameInput) {
       const apelido = normalizeNickname(nicknameInput.value);
