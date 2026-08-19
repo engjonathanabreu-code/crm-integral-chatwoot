@@ -159,8 +159,68 @@ function clientProject(clientOrId) {
   return projectById(client?.projeto_id);
 }
 
+// Garante o DDI "55" em números de telefone brasileiros (DDD + número,
+// 10 ou 11 dígitos), pra bater com o formato que o WhatsApp já usa. Sem
+// isso, o mesmo cliente cadastrado no CRM sem "+55" e escrevendo depois
+// pelo WhatsApp virava DOIS registros diferentes (telefone_normalizado
+// "4796151814" x "554796151814"), com histórico fragmentado.
+function normalizeBrazilPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 function isMissingRelationError(error) {
   return error && (error.code === "42P01" || error.code === "42703" || /does not exist|Could not find.*schema cache/i.test(error.message || ""));
+}
+
+// Traduz erros comuns do Postgres (violação de índice único) para uma
+// mensagem em português que a pessoa realmente entende, em vez do texto
+// cru do banco (ex.: "duplicate key value violates unique constraint
+// \"clientes_telefone_normalizado_unique\"").
+const FRIENDLY_UNIQUE_ERRORS = {
+  clientes_telefone_normalizado_unique: "Já existe um cliente cadastrado com esse telefone.",
+  clientes_chatwoot_contact_id_unique: "Este contato do WhatsApp já está vinculado a outro cliente.",
+  clientes_codigo_processo_uidx: "Já existe um cliente cadastrado com esse código de processo.",
+  profiles_apelido_uidx: "Este nome de usuário já está em uso.",
+  projetos_nome_cidade_estado_uidx: "Já existe um projeto com esse nome, cidade e estado.",
+};
+
+// Chave "frouxa" pra comparar cidade: sem acento, minúsculo, sem sufixo de
+// estado ("Itaiópolis/SC", "Itaiópolis - SC" -> "itaiopolis"). Usada pra
+// não deixar a mesma cidade virar vários municípios diferentes no CRM.
+function normalizeCityKey(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\/\-–—]\s*[a-z]{2}\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Reaproveita a grafia já usada em algum Projeto/NUI ou em outro cliente
+// para a mesma cidade, em vez de gravar uma variante nova a cada cadastro.
+function canonicalCityName(rawCity) {
+  const clean = String(rawCity || "").trim();
+  if (!clean) return clean;
+  const key = normalizeCityKey(clean);
+  if (!key) return clean;
+  const fromProject = state.projects.find((p) => normalizeCityKey(p.cidade) === key);
+  if (fromProject) return fromProject.cidade;
+  const fromClient = state.clients.find((c) => normalizeCityKey(c.municipio) === key);
+  if (fromClient) return fromClient.municipio;
+  return clean;
+}
+
+function friendlyErrorMessage(error) {
+  if (!error) return "Erro desconhecido.";
+  const message = error.message || String(error);
+  if (error.code === "23505") {
+    const key = Object.keys(FRIENDLY_UNIQUE_ERRORS).find((k) => message.includes(k));
+    if (key) return FRIENDLY_UNIQUE_ERRORS[key];
+  }
+  return message;
 }
 
 async function loadOptionalProjectData() {
@@ -1057,7 +1117,7 @@ async function deleteProject(projectId) {
   if (!confirmed) return;
 
   const { error } = await supabase.from("projetos").delete().eq("id", projectId);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
 
   if (state.projectsDrill.projetoId === projectId) state.projectsDrill.projetoId = null;
   if (state.progressDrill.projetoId === projectId) state.progressDrill.projetoId = null;
@@ -1084,7 +1144,7 @@ async function deleteProjectProgress(progressId, projectId) {
   if (!confirmed) return;
 
   const { error } = await supabase.from("andamentos").delete().eq("id", progressId);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
 
   await loadData();
   showToast("Andamento excluído.");
@@ -1118,7 +1178,7 @@ async function saveProject(event) {
   let result;
   if (id) result = await supabase.from("projetos").update(payload).eq("id", id);
   else result = await supabase.from("projetos").insert({ ...payload, created_by: state.user.id });
-  if (result.error) return showToast(result.error.message, "error");
+  if (result.error) return showToast(friendlyErrorMessage(result.error), "error");
   $("projectDialog").close();
   if (!id) {
     state.projectsDrill.municipio = municipioKeyOf(payload);
@@ -1156,7 +1216,7 @@ async function saveProjectProgress(event) {
     created_by: state.user.id,
   };
   const { error } = await supabase.from("andamentos").insert(payload);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   $("progressDialog").close();
   const project = projectById(projetoId);
   if (project) {
@@ -1225,7 +1285,7 @@ async function saveMarketingProject(event) {
     observacoes: $("marketingObservacoes").value.trim() || null,
     created_by: state.user.id,
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   $("marketingProjectDialog").close();
   await loadData();
   showToast("Projeto vinculado ao Controle de Marketing.");
@@ -1287,7 +1347,7 @@ async function toggleMarketingEtapa(progressId) {
     concluida_em: willComplete ? new Date().toISOString() : null,
     concluida_por: willComplete ? state.user.id : null,
   }).eq("id", progressId);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   await loadData();
   showToast(willComplete ? "Etapa marcada como concluída." : "Etapa reaberta.");
 }
@@ -1364,11 +1424,11 @@ async function saveClient(event) {
     owner_id: ownerId,
     nome: $("clientName").value.trim(),
     telefone: $("clientPhone").value.trim() || null,
-    telefone_normalizado: $("clientPhone").value.trim() ? $("clientPhone").value.replace(/\D/g, "") : null,
+    telefone_normalizado: $("clientPhone").value.trim() ? normalizeBrazilPhone($("clientPhone").value) : null,
     email: $("clientEmail").value.trim() || null,
     projeto_id: state.projectSchemaReady ? ($("clientProject").value || null) : (existing?.projeto_id || null),
     estado: $("clientState").value.trim().toUpperCase() || null,
-    municipio: $("clientMunicipality").value.trim() || null,
+    municipio: canonicalCityName($("clientMunicipality").value) || null,
     nucleo: $("clientNucleus").value.trim() || null,
     remessa: $("clientShipment").value.trim() || null,
     origem: $("clientSource").value,
@@ -1390,7 +1450,7 @@ async function saveClient(event) {
 
   if (result.error) {
     setSync("error", "Erro ao salvar");
-    return showToast(result.error.message, "error");
+    return showToast(friendlyErrorMessage(result.error), "error");
   }
 
   if (existing) {
@@ -1425,7 +1485,7 @@ async function deleteClient() {
   const id = $("clientId").value;
   if (!id || !confirm("Excluir este cliente e todo o histórico relacionado?")) return;
   const { error } = await supabase.from("clientes").delete().eq("id", id);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   $("clientFormDialog").close();
   $("clientDetailDialog").close();
   state.selectedClientId = null;
@@ -1648,7 +1708,7 @@ function renderClientImportPreview() {
 
 function importPayloadFromRow(row, projectData, template) {
   const phones = extractImportPhones(row.Contato);
-  const primary = phones[0] || null;
+  const primary = phones[0] ? normalizeBrazilPhone(phones[0]) : null;
 
   const base = {
     owner_id: state.user.id,
@@ -1738,7 +1798,7 @@ async function runClientImport() {
       }
     } catch (error) {
       failed += 1;
-      errors.push(`Linha ${i + 2} (${payload.codigo_processo || payload.nome}): ${error.message}`);
+      errors.push(`Linha ${i + 2} (${payload.codigo_processo || payload.nome}): ${friendlyErrorMessage(error)}`);
     }
     if ((i + 1) % 25 === 0 || i === state.importRows.length - 1) {
       setSync("loading", `Importando ${i + 1}/${state.importRows.length}...`);
@@ -1768,7 +1828,7 @@ async function saveHistory(event) {
     tipo: $("historyType").value,
     descricao: $("historyDescription").value.trim(),
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   event.target.reset();
   await loadData();
   showToast("Atualização registrada.");
@@ -1784,7 +1844,7 @@ async function saveTicket(event) {
     status: $("ticketStatus").value,
     observacao: $("ticketNotes").value.trim() || null,
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   event.target.reset();
   await loadData();
   showToast("Atendimento registrado.");
@@ -1802,7 +1862,7 @@ async function saveTask(event) {
     data: $("taskDueDate").value,
     prioridade: $("taskPriority").value,
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   event.target.reset();
   $("taskDueDate").value = today();
   await loadData();
@@ -1811,7 +1871,7 @@ async function saveTask(event) {
 
 async function resolveTicket(id) {
   const { error } = await supabase.from("atendimentos").update({ status: "Resolvido" }).eq("id", id);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   await loadData();
   showToast("Atendimento resolvido.");
 }
@@ -1820,7 +1880,7 @@ async function toggleTask(id) {
   const task = state.tasks.find((item) => item.id === id);
   if (!task) return;
   const { error } = await supabase.from("tarefas").update({ concluida: !task.concluida }).eq("id", id);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   await loadData();
   showToast(task.concluida ? "Tarefa reaberta." : "Tarefa concluída.");
 }
@@ -1904,7 +1964,7 @@ async function saveStandaloneTicket(event) {
     status: $("ticketStandaloneStatus").value,
     observacao: $("ticketStandaloneNotes").value.trim() || null,
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   $("ticketStandaloneDialog").close();
   await loadData();
   showToast("Atendimento registrado.");
@@ -1933,7 +1993,7 @@ async function saveStandaloneTask(event) {
     data: $("taskStandaloneDueDate").value,
     prioridade: $("taskStandalonePriority").value,
   });
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   $("taskStandaloneDialog").close();
   await loadData();
   showToast("Tarefa criada.");
@@ -2058,7 +2118,7 @@ async function submitResetPassword(event) {
 async function updateUserProfile(id, patch) {
   if (id === state.user.id && patch.ativo === false) return showToast("Você não pode desativar seu próprio usuário.", "error");
   const { error } = await supabase.from("profiles").update(patch).eq("id", id);
-  if (error) return showToast(error.message, "error");
+  if (error) return showToast(friendlyErrorMessage(error), "error");
   await loadData();
   showToast("Usuário atualizado.");
 }

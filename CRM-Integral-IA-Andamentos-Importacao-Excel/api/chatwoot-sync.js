@@ -11,7 +11,21 @@ function json(res, status, body) {
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  const digits = String(value || "").replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  // Números brasileiros sem o DDI (DDD + número, 10 ou 11 dígitos) recebem
+  // o prefixo "55" pra sempre bater com o formato que o WhatsApp já manda
+  // (com DDI). Sem isso, o mesmo cliente cadastrado no CRM sem "+55" e
+  // escrevendo depois pelo WhatsApp virava DOIS registros diferentes
+  // (telefone_normalizado "4796151814" x "554796151814"), com histórico
+  // fragmentado e risco de erro de telefone duplicado ao tentar unificar.
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`;
+  }
+
+  return digits;
 }
 
 function asBool(value) {
@@ -178,6 +192,82 @@ function extractName(payload) {
 
 function extractCity(payload) {
   return customAttrs(payload).ia_cidade || null;
+}
+
+// Chave de comparação "frouxa" para nome de cidade: sem acento, minúsculo,
+// sem sufixo de estado ("Itaiópolis/SC", "Itaiópolis - SC" -> "itaiopolis").
+function normalizeCityKey(value) {
+  return stripAccents(String(value || ""))
+    .toLowerCase()
+    .replace(/[\/\-–—]\s*[a-z]{2}\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Rejeita valores óbvios de "não é uma cidade" (frase de conversa capturada
+// por engano como ia_cidade), sem depender só da validação do agente de IA.
+function looksLikeCity(value) {
+  const clean = String(value || "").trim();
+  if (!clean || clean.length > 80) return false;
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length > 6) return false;
+  if (/[?]/.test(clean) || /\d{4,}/.test(clean)) return false;
+  return true;
+}
+
+let cityLookupCache = null;
+let cityLookupCacheAt = 0;
+const CITY_LOOKUP_TTL_MS = 60 * 1000;
+
+// Busca as grafias de cidade já conhecidas (projetos e clientes) para
+// reaproveitar a mesma grafia em vez de criar uma variante nova a cada
+// mensagem do WhatsApp (ex.: "Itaiopolis", "Itaiópolis", "Itaiópolis/SC"
+// todas apontando pro mesmo município, mas fragmentando os agrupamentos
+// do CRM). Cacheado por 1 minuto para não bater no banco em toda mensagem.
+async function knownCityNames() {
+  const now = Date.now();
+  if (cityLookupCache && now - cityLookupCacheAt < CITY_LOOKUP_TTL_MS) {
+    return cityLookupCache;
+  }
+
+  const map = new Map();
+
+  try {
+    const projetos = await sb("projetos?select=cidade&cidade=not.is.null");
+    for (const row of projetos || []) {
+      const key = normalizeCityKey(row.cidade);
+      if (key && !map.has(key)) map.set(key, row.cidade);
+    }
+
+    const clientes = await sb(
+      "clientes?select=municipio&municipio=not.is.null&limit=1000"
+    );
+    for (const row of clientes || []) {
+      const key = normalizeCityKey(row.municipio);
+      // projetos.cidade tem prioridade (grafia curada); só preenche pelo
+      // cliente se a cidade ainda não apareceu em nenhum projeto.
+      if (key && !map.has(key)) map.set(key, row.municipio);
+    }
+  } catch (error) {
+    console.warn("Falha ao carregar cidades conhecidas:", error.message);
+  }
+
+  cityLookupCache = map;
+  cityLookupCacheAt = now;
+  return map;
+}
+
+async function resolveCanonicalCity(rawCity) {
+  if (!looksLikeCity(rawCity)) {
+    return null;
+  }
+
+  const clean = String(rawCity).trim();
+  const key = normalizeCityKey(clean);
+  if (!key) return null;
+
+  const known = await knownCityNames();
+  return known.get(key) || clean;
 }
 
 const SETORES_VALIDOS = [
@@ -350,7 +440,7 @@ async function findOrCreateClient(payload) {
     nome: extractName(payload),
     telefone: extractPhone(payload) || null,
     telefone_normalizado: phone || null,
-    municipio: extractCity(payload),
+    municipio: await resolveCanonicalCity(extractCity(payload)),
     origem: "WhatsApp",
     canal: "WhatsApp",
     chatwoot_contact_id: contactId,
