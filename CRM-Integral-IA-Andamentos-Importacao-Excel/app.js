@@ -120,6 +120,17 @@ function clientName(id) {
   return clientDisplayName(state.clients.find((client) => client.id === id));
 }
 
+// Cliente já assumido por um atendente humano no WhatsApp (campo
+// preenchido pelo webhook do Chatwoot via ultimo_agente). Usado para
+// filtrar Funil comercial e Atendimentos: só mostram clientes que já
+// saíram do fluxo automático da IA e estão com um humano de fato.
+function clientAssignedToHumanAgent(clientOrId) {
+  const client = typeof clientOrId === "string"
+    ? state.clients.find((item) => item.id === clientOrId)
+    : clientOrId;
+  return Boolean(String(client?.ultimo_agente || "").trim());
+}
+
 function clientMunicipio(id) {
   return state.clients.find((client) => client.id === id)?.municipio || "Sem município informado";
 }
@@ -587,7 +598,7 @@ function renderPipeline() {
   const owner = $("pipelineOwnerFilter").value;
   const filtered = state.clients.filter((client) => {
     const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo, client.remessa].join(" ").toLowerCase();
-    return (!search || haystack.includes(search)) && (!owner || client.owner_id === owner);
+    return clientAssignedToHumanAgent(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner);
   });
 
   $("pipelineBoard").innerHTML = CLIENT_STATUSES.map((status) => {
@@ -606,18 +617,20 @@ function renderTickets() {
   const sector = $("ticketSectorFilter").value;
   const status = $("ticketStatusFilter").value;
 
-  const municipalities = [...new Set(state.tickets.map((ticket) => clientMunicipio(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const assignedTickets = state.tickets.filter((ticket) => clientAssignedToHumanAgent(ticket.cliente_id));
+
+  const municipalities = [...new Set(assignedTickets.map((ticket) => clientMunicipio(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("ticketMunicipalityFilter").innerHTML = `<option value="">Todos os municípios</option>${municipalities.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   $("ticketMunicipalityFilter").value = municipality;
 
-  const nucleusPool = state.tickets.filter((ticket) => !municipality || clientMunicipio(ticket.cliente_id) === municipality);
+  const nucleusPool = assignedTickets.filter((ticket) => !municipality || clientMunicipio(ticket.cliente_id) === municipality);
   const nucleusOptions = [...new Set(nucleusPool.map((ticket) => clientNucleo(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("ticketNucleusFilter").innerHTML = `<option value="">Todos os NUIs</option>${nucleusOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   $("ticketNucleusFilter").value = nucleusOptions.includes(nucleus) ? nucleus : "";
 
   const filtered = state.tickets.filter((ticket) => {
     const haystack = [ticket.assunto, ticket.observacao, clientName(ticket.cliente_id)].join(" ").toLowerCase();
-    return (!search || haystack.includes(search)) &&
+    return clientAssignedToHumanAgent(ticket.cliente_id) && (!search || haystack.includes(search)) &&
       (!municipality || clientMunicipio(ticket.cliente_id) === municipality) &&
       (!nucleus || clientNucleo(ticket.cliente_id) === nucleus) &&
       (!sector || ticket.setor === sector) && (!status || ticket.status === status);
