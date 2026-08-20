@@ -478,11 +478,83 @@ function renderOwnerOptions() {
   if ($("marketingProjectSelect")) $("marketingProjectSelect").innerHTML = `<option value="">Selecione um projeto</option>${projectOptions}`;
 }
 
+// Tempo de resposta do agente humano: para cada conversa do Chatwoot
+// (chatwoot_conversation_id), mede quanto tempo o cliente ficou
+// esperando entre uma mensagem dele ("Cliente") e a próxima resposta
+// de um Agente humano (não conta resposta da IA, que não é o "agente
+// atribuído" — só zera a espera quando quem responde é Agente).
+// Só considera a primeira mensagem de cada leva de espera (mensagens
+// seguidas do cliente não reiniciam o cronômetro) e ignora esperas
+// acima de 24h, que normalmente são conversa retomada dias depois, e
+// não resposta lenta de fato.
+function computeAgentResponseTimes() {
+  const MAX_GAP_MS = 24 * 60 * 60 * 1000;
+  const byConversation = new Map();
+  state.interactions.forEach((item) => {
+    if (!item.chatwoot_conversation_id) return;
+    if (item.autor_tipo !== "Cliente" && item.autor_tipo !== "Agente") return;
+    const list = byConversation.get(item.chatwoot_conversation_id) || [];
+    list.push(item);
+    byConversation.set(item.chatwoot_conversation_id, list);
+  });
+
+  const samples = [];
+  byConversation.forEach((list) => {
+    list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    let waitingSince = null;
+    list.forEach((item) => {
+      if (item.autor_tipo === "Cliente") {
+        if (!waitingSince) waitingSince = item.created_at;
+      } else if (item.autor_tipo === "Agente" && waitingSince) {
+        const gapMs = new Date(item.created_at) - new Date(waitingSince);
+        if (gapMs >= 0 && gapMs <= MAX_GAP_MS) {
+          samples.push({ agent: item.autor_nome || "Sem nome", minutes: gapMs / 60000 });
+        }
+        waitingSince = null;
+      }
+    });
+  });
+
+  const byAgent = samples.reduce((acc, sample) => {
+    (acc[sample.agent] ||= []).push(sample.minutes);
+    return acc;
+  }, {});
+
+  const agentStats = Object.keys(byAgent)
+    .map((agent) => {
+      const minutesList = byAgent[agent];
+      const avgMinutes = minutesList.reduce((sum, m) => sum + m, 0) / minutesList.length;
+      return { agent, count: minutesList.length, avgMinutes };
+    })
+    .sort((a, b) => a.avgMinutes - b.avgMinutes);
+
+  const overallAvgMinutes = samples.length
+    ? samples.reduce((sum, s) => sum + s.minutes, 0) / samples.length
+    : null;
+
+  return { agentStats, overallAvgMinutes, sampleCount: samples.length };
+}
+
+function formatResponseMinutes(minutes) {
+  if (minutes == null) return "—";
+  if (minutes < 1) return "< 1 min";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return mins ? `${hours}h ${mins}min` : `${hours}h`;
+}
+
 function renderDashboard() {
   $("metricClients").textContent = state.clients.length;
   $("metricNegotiation").textContent = state.clients.filter((client) => client.status === "Negociação").length;
   $("metricOpenTickets").textContent = state.tickets.filter((ticket) => ticket.status !== "Resolvido").length;
   $("metricPendingTasks").textContent = state.tasks.filter((task) => !task.concluida).length;
+
+  const responseStats = computeAgentResponseTimes();
+  $("metricResponseTime").textContent = formatResponseMinutes(responseStats.overallAvgMinutes);
+  $("metricResponseTimeNote").textContent = responseStats.sampleCount
+    ? `agente humano • ${responseStats.sampleCount} resposta(s)`
+    : "sem dados ainda";
 
   const activePipeline = state.clients.filter((client) => !["Cliente Ativo", "Perdido"].includes(client.status));
   const showMoney = isAdmin();
@@ -516,6 +588,10 @@ function renderDashboard() {
       <h4>${escapeHtml(item.title)}</h4>
       <p class="muted">${escapeHtml(item.client)} • ${formatDateTime(item.date)}</p>
     </div>`).join("") : emptyState("Nenhuma interação registrada.");
+
+  $("dashboardResponseTimes").innerHTML = responseStats.agentStats.length
+    ? responseStats.agentStats.map((row) => `<div class="summary-row"><div><strong>${escapeHtml(row.agent)}</strong><small>${row.count} resposta(s)</small></div><strong>${formatResponseMinutes(row.avgMinutes)}</strong></div>`).join("")
+    : emptyState("Sem dados de resposta de agente ainda.");
 }
 
 function buildRecentActivity(clientId = null) {
