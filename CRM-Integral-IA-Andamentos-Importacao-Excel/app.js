@@ -589,8 +589,19 @@ function renderClients() {
   const isFiltering = Boolean(search || municipality || nucleus || status || owner);
   const autoExpand = isFiltering || filtered.length <= 60;
 
-  $("clientsByMunicipality").innerHTML = Object.keys(municipalityGroups).sort((a, b) => a.localeCompare(b, "pt-BR")).map((city) => {
+  const MISSING_CITY = "Sem município informado";
+  // "Sem município informado" fica sempre fixo no topo da listagem —
+  // não faz sentido esse grupo "flutuar" no meio da ordem alfabética,
+  // já que ele sinaliza cadastros incompletos que merecem atenção.
+  const sortedCities = Object.keys(municipalityGroups).sort((a, b) => {
+    if (a === MISSING_CITY) return -1;
+    if (b === MISSING_CITY) return 1;
+    return a.localeCompare(b, "pt-BR");
+  });
+
+  $("clientsByMunicipality").innerHTML = sortedCities.map((city) => {
     const clientsInCity = municipalityGroups[city];
+    const isMissingCity = city === MISSING_CITY;
     const nucleusGroups = clientsInCity.reduce((acc, client) => {
       const nuc = client.nucleo || "Sem NUI informado";
       (acc[nuc] ||= []).push(client);
@@ -601,7 +612,7 @@ function renderClients() {
         <summary>${escapeHtml(nuc)} <span>${nucleusGroups[nuc].length}</span></summary>
         <div class="client-row-list">${nucleusGroups[nuc].map(clientRow).join("")}</div>
       </details>`).join("");
-    return `<details class="municipality-group" ${autoExpand ? "open" : ""}>
+    return `<details class="municipality-group${isMissingCity ? " municipality-group-missing" : ""}" ${autoExpand ? "open" : ""}>
       <summary><span class="municipality-group-title">${escapeHtml(city)}<small>${clientsInCity.length} cliente(s) • ${Object.keys(nucleusGroups).length} NUI(s)</small></span></summary>
       <div class="nucleus-groups">${nucleusHtml}</div>
     </details>`;

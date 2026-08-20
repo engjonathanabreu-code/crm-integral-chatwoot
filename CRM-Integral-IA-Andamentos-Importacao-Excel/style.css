@@ -380,6 +380,9 @@ details.municipality-group > summary::after { content: "\25BE"; color: var(--mut
 details.municipality-group:not([open]) > summary::after { transform: rotate(-90deg); }
 .municipality-group-title { font-size: 14.5px; font-weight: 650; }
 .municipality-group-title small { margin-left: 8px; color: var(--muted); font-weight: 500; }
+details.municipality-group-missing { border-color: #ecdcae; background: var(--warning-soft); }
+details.municipality-group-missing > summary { color: var(--warning); }
+details.municipality-group-missing .municipality-group-title small { color: var(--warning); opacity: .8; }
 .nucleus-groups { border-top: 1px solid var(--border); display: grid; }
 details.nucleus-group { border-top: 1px solid var(--border); }
 details.nucleus-group:first-child { border-top: 0; }
