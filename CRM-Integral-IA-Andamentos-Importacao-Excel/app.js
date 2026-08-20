@@ -120,15 +120,16 @@ function clientName(id) {
   return clientDisplayName(state.clients.find((client) => client.id === id));
 }
 
-// Cliente já assumido por um atendente humano no WhatsApp (campo
-// preenchido pelo webhook do Chatwoot via ultimo_agente). Usado para
-// filtrar Funil comercial e Atendimentos: só mostram clientes que já
-// saíram do fluxo automático da IA e estão com um humano de fato.
-function clientAssignedToHumanAgent(clientOrId) {
+// Cliente atrelado a um Comercial (comercial_id), atribuído pelo
+// Admin ou por quem cadastrou o cliente. Usado para filtrar Funil
+// comercial e Atendimentos: só mostram clientes que já têm um
+// Comercial responsável — não basta ter trocado mensagem com
+// qualquer atendente no WhatsApp.
+function clientHasComercial(clientOrId) {
   const client = typeof clientOrId === "string"
     ? state.clients.find((item) => item.id === clientOrId)
     : clientOrId;
-  return Boolean(String(client?.ultimo_agente || "").trim());
+  return Boolean(client?.comercial_id);
 }
 
 function clientMunicipio(id) {
@@ -442,6 +443,13 @@ function renderOwnerOptions() {
   $("clientOwnerFilter").innerHTML = filterOptions;
   $("pipelineOwnerFilter").innerHTML = filterOptions;
 
+  // Comercial: só usuários com perfil "comercial" podem ser
+  // atribuídos como o Comercial responsável por um cliente.
+  const comercialProfiles = activeProfiles.filter((profile) => profile.perfil === "comercial");
+  const comercialOptions = comercialProfiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.nome)}</option>`).join("");
+  if ($("clientComercial")) $("clientComercial").innerHTML = `<option value="">Sem comercial atribuído</option>${comercialOptions}`;
+  if ($("pipelineComercialFilter")) $("pipelineComercialFilter").innerHTML = `<option value="">Todos os comerciais</option>${comercialOptions}`;
+
   const projectOptions = state.projects
     .filter((project) => project.ativo)
     .sort((a, b) => `${a.estado}-${a.cidade}-${a.nome}`.localeCompare(`${b.estado}-${b.cidade}-${b.nome}`, "pt-BR"))
@@ -596,9 +604,10 @@ function clientRow(client) {
 function renderPipeline() {
   const search = $("pipelineSearch").value.trim().toLowerCase();
   const owner = $("pipelineOwnerFilter").value;
+  const comercial = $("pipelineComercialFilter")?.value || "";
   const filtered = state.clients.filter((client) => {
     const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo, client.remessa].join(" ").toLowerCase();
-    return clientAssignedToHumanAgent(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner);
+    return clientHasComercial(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner) && (!comercial || client.comercial_id === comercial);
   });
 
   $("pipelineBoard").innerHTML = CLIENT_STATUSES.map((status) => {
@@ -617,7 +626,7 @@ function renderTickets() {
   const sector = $("ticketSectorFilter").value;
   const status = $("ticketStatusFilter").value;
 
-  const assignedTickets = state.tickets.filter((ticket) => clientAssignedToHumanAgent(ticket.cliente_id));
+  const assignedTickets = state.tickets.filter((ticket) => clientHasComercial(ticket.cliente_id));
 
   const municipalities = [...new Set(assignedTickets.map((ticket) => clientMunicipio(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("ticketMunicipalityFilter").innerHTML = `<option value="">Todos os municípios</option>${municipalities.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
@@ -630,7 +639,7 @@ function renderTickets() {
 
   const filtered = state.tickets.filter((ticket) => {
     const haystack = [ticket.assunto, ticket.observacao, clientName(ticket.cliente_id)].join(" ").toLowerCase();
-    return clientAssignedToHumanAgent(ticket.cliente_id) && (!search || haystack.includes(search)) &&
+    return clientHasComercial(ticket.cliente_id) && (!search || haystack.includes(search)) &&
       (!municipality || clientMunicipio(ticket.cliente_id) === municipality) &&
       (!nucleus || clientNucleo(ticket.cliente_id) === nucleus) &&
       (!sector || ticket.setor === sector) && (!status || ticket.status === status);
@@ -738,6 +747,7 @@ function renderUsers() {
         <select data-user-role="${profile.id}">
           <option value="usuario" ${profile.perfil === "usuario" ? "selected" : ""}>Usuário</option>
           <option value="marketing" ${profile.perfil === "marketing" ? "selected" : ""}>Marketing</option>
+          <option value="comercial" ${profile.perfil === "comercial" ? "selected" : ""}>Comercial</option>
           <option value="admin" ${profile.perfil === "admin" ? "selected" : ""}>Administrador</option>
         </select>
       </label>
@@ -1405,6 +1415,14 @@ function setView(view) {
   $("pageDescription").textContent = description;
 }
 
+// Só o Admin ou quem cadastrou o cliente (created_by) pode
+// atribuir/trocar o Comercial responsável.
+function canAssignComercial(existingClient) {
+  if (isAdmin()) return true;
+  if (!existingClient) return true; // cliente novo: quem está criando é o created_by
+  return existingClient.created_by === state.user.id;
+}
+
 function openNewClient() {
   $("clientForm").reset();
   $("clientId").value = "";
@@ -1415,6 +1433,10 @@ function openNewClient() {
   if ($("clientState")) $("clientState").value = "";
   $("clientResponsible").value = state.profile.nome;
   $("clientOwner").value = state.user.id;
+  if ($("clientComercial")) {
+    $("clientComercial").value = "";
+    $("clientComercial").disabled = !canAssignComercial(null);
+  }
   $("clientFormDialog").showModal();
 }
 
@@ -1435,6 +1457,10 @@ function openEditClient(client) {
   $("clientValue").value = client.valor_estimado || 0;
   $("clientResponsible").value = client.responsavel || "";
   $("clientOwner").value = client.owner_id;
+  if ($("clientComercial")) {
+    $("clientComercial").value = client.comercial_id || "";
+    $("clientComercial").disabled = !canAssignComercial(client);
+  }
   $("clientNotes").value = client.observacoes || "";
   $("deleteClientButton").classList.remove("hidden");
   $("clientFormDialog").showModal();
@@ -1445,8 +1471,12 @@ async function saveClient(event) {
   const id = $("clientId").value;
   const existing = state.clients.find((client) => client.id === id);
   const ownerId = isAdmin() ? $("clientOwner").value : (existing?.owner_id || state.user.id);
+  const comercialId = canAssignComercial(existing)
+    ? ($("clientComercial")?.value || null)
+    : (existing?.comercial_id ?? null);
   const payload = {
     owner_id: ownerId,
+    comercial_id: comercialId,
     nome: titleCaseName($("clientName").value),
     telefone: $("clientPhone").value.trim() || null,
     telefone_normalizado: $("clientPhone").value.trim() ? normalizeBrazilPhone($("clientPhone").value) : null,
@@ -1495,13 +1525,18 @@ async function saveClient(event) {
 function describeClientChanges(oldClient, payload) {
   const fields = {
     nome: "Nome", telefone: "Telefone", email: "E-mail", projeto_id: "Projeto", estado: "Estado", municipio: "Município", nucleo: "Núcleo", remessa: "Remessa",
-    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", responsavel: "Responsável", codigo_processo: "Código do processo", estado_civil: "Estado civil", observacoes: "Observações", owner_id: "Dono do registro",
+    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", responsavel: "Responsável", codigo_processo: "Código do processo", estado_civil: "Estado civil", observacoes: "Observações", owner_id: "Dono do registro", comercial_id: "Comercial",
   };
   return Object.entries(fields).flatMap(([key, label]) => {
     const before = oldClient[key] ?? "";
     const after = payload[key] ?? "";
     if (String(before) === String(after)) return [];
-    const format = (value) => key === "valor_estimado" ? money(value) : key === "owner_id" ? profileName(value) : key === "projeto_id" ? projectLabel(projectById(value)) : String(value || "Não informado");
+    const format = (value) =>
+      key === "valor_estimado" ? money(value) :
+      key === "comercial_id" ? (value ? profileName(value) : "Sem comercial atribuído") :
+      key === "owner_id" ? profileName(value) :
+      key === "projeto_id" ? projectLabel(projectById(value)) :
+      String(value || "Não informado");
     return [`${label}: ${format(before)} → ${format(after)}`];
   });
 }
@@ -1537,7 +1572,8 @@ function renderClientDetail(clientId) {
     ["Estado", client.estado || linkedProject?.estado || "-"], ["Município", client.municipio || linkedProject?.cidade || "-"],
     ["Núcleo", client.nucleo || "-"], ["Remessa", client.remessa || "-"], ["Origem", client.origem || "-"],
     ["Canal", client.canal || "CRM"], ["Último setor", client.ultimo_setor || "-"], ["Último agente", client.ultimo_agente || "-"],
-    ["Responsável operacional", client.responsavel || "-"], ["Dono do registro", profileName(client.owner_id)], ["Código do processo", client.codigo_processo || "-"],
+    ["Responsável operacional", client.responsavel || "-"], ["Dono do registro", profileName(client.owner_id)],
+    ["Comercial", client.comercial_id ? profileName(client.comercial_id) : "Sem comercial atribuído"], ["Código do processo", client.codigo_processo || "-"],
     ["CPF", client.cpf || "-"], ["Endereço", client.endereco || "-"], ["Tipo de imóvel", client.tipo_imovel || "-"],
     ["Tipo de posse", client.tipo_posse || "-"], ["Área da posse", client.area_posse || "-"],
     ["Estado civil", client.estado_civil || "-"], ["Tipo documental", client.tipo_documental || "-"], ["Contrato", client.contrato_status || "-"],
@@ -2238,7 +2274,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 
   ["clientSearch", "municipalityFilter", "nucleusFilter", "clientStatusFilter", "clientOwnerFilter"].forEach((id) => $(id).addEventListener(id === "clientSearch" ? "input" : "change", renderClients));
-  ["pipelineSearch", "pipelineOwnerFilter"].forEach((id) => $(id).addEventListener(id === "pipelineSearch" ? "input" : "change", renderPipeline));
+  ["pipelineSearch", "pipelineOwnerFilter", "pipelineComercialFilter"].forEach((id) => $(id).addEventListener(id === "pipelineSearch" ? "input" : "change", renderPipeline));
   ["ticketSearch", "ticketMunicipalityFilter", "ticketNucleusFilter", "ticketSectorFilter", "ticketStatusFilter"].forEach((id) => $(id).addEventListener(id === "ticketSearch" ? "input" : "change", () => { state.ticketsVisible = LIST_PAGE_SIZE; renderTickets(); }));
   ["taskSearch", "taskMunicipalityFilter", "taskNucleusFilter", "taskStateFilter"].forEach((id) => $(id).addEventListener(id === "taskSearch" ? "input" : "change", () => { state.tasksVisible = LIST_PAGE_SIZE; renderTasks(); }));
   ["projectSearch", "projectStateFilter", "projectActiveFilter"].forEach((id) => $(id).addEventListener(id === "projectSearch" ? "input" : "change", renderProjects));

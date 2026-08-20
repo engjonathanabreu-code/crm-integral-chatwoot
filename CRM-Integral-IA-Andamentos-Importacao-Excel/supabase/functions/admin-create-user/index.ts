@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     });
     if (error) throw error;
 
-    const perfilFinal = ["admin", "marketing"].includes(perfil) ? perfil : "usuario";
+    const perfilFinal = ["admin", "marketing", "comercial"].includes(perfil) ? perfil : "usuario";
     await adminClient
       .from("profiles")
       .update({ nome, apelido: username, perfil: perfilFinal, ativo: true })

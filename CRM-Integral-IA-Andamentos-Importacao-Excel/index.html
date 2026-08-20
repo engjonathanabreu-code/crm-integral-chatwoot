@@ -155,6 +155,7 @@
         <div class="filters panel compact">
           <input id="pipelineSearch" placeholder="Buscar no funil..." />
           <select id="pipelineOwnerFilter" class="admin-only hidden"><option value="">Todos os responsáveis</option></select>
+          <select id="pipelineComercialFilter"><option value="">Todos os comerciais</option></select>
         </div>
         <div id="pipelineBoard" class="kanban-board"></div>
       </section>
@@ -293,7 +294,7 @@
               <label>E-mail<input id="newUserEmail" type="email" required placeholder="nome@empresa.com.br" /></label>
               <label>Senha inicial<input id="newUserPassword" type="password" minlength="8" required /></label>
               <label>Perfil
-                <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="admin">Administrador</option></select>
+                <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="comercial">Comercial</option><option value="admin">Administrador</option></select>
               </label>
               <button class="primary" type="submit">Criar usuário</button>
               <p id="createUserMessage" class="form-message"></p>
@@ -353,6 +354,9 @@
         <label>Código do processo<input id="clientProcessCode" placeholder="Ex.: GTB01_0386" /></label>
         <label>Estado civil<input id="clientCivilStatus" /></label>
         <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
+        <label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>
+          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+        </label>
         <label class="span-two">Observações<textarea id="clientNotes"></textarea></label>
       </div>
       <div class="dialog-actions">

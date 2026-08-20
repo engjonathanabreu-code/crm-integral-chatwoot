@@ -10,7 +10,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nome text not null default '',
   apelido text,
-  perfil text not null default 'usuario' check (perfil in ('admin', 'usuario', 'marketing')),
+  perfil text not null default 'usuario' check (perfil in ('admin', 'usuario', 'marketing', 'comercial')),
   ativo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -65,6 +65,10 @@ alter table public.clientes add column if not exists chatwoot_contact_id bigint;
 alter table public.clientes add column if not exists chatwoot_last_conversation_id bigint;
 alter table public.clientes add column if not exists ultimo_setor text;
 alter table public.clientes add column if not exists ultimo_agente text;
+alter table public.clientes add column if not exists comercial_id uuid references public.profiles(id);
+create index if not exists clientes_comercial_id_idx on public.clientes (comercial_id);
+-- comercial_id: agente comercial responsável pelo cliente no Funil comercial,
+-- atribuído pelo Admin ou por quem cadastrou o cliente (created_by).
 alter table public.clientes add column if not exists canal text default 'CRM';
 alter table public.clientes add column if not exists codigo_processo text;
 alter table public.clientes add column if not exists estado_civil text;
@@ -179,7 +183,7 @@ create table if not exists public.historico (
 -- Garante que instalações já existentes (criadas antes do perfil "marketing")
 -- também aceitem o novo valor.
 alter table public.profiles drop constraint if exists profiles_perfil_check;
-alter table public.profiles add constraint profiles_perfil_check check (perfil in ('admin', 'usuario', 'marketing'));
+alter table public.profiles add constraint profiles_perfil_check check (perfil in ('admin', 'usuario', 'marketing', 'comercial'));
 
 -- CONTROLE DE MARKETING (jornada do cliente por município)
 create table if not exists public.marketing_etapas (
