@@ -1,0 +1,35 @@
+-- ============================================================
+-- MIGRAÇÃO: comerciais atribuídos por núcleo (projeto) +
+-- Cliente Ativo sai do Funil comercial
+-- ============================================================
+--
+-- Já aplicada em produção via apply_migration (Supabase MCP),
+-- migração "adiciona_comercial_ids_em_projetos". Este arquivo
+-- documenta a mudança no histórico do repositório.
+--
+-- Pedido: "podemos atribuir para todo um nucleo um ou mais agentes
+-- comerciais, e esses clientes aparecem no funil comercial dele" +
+-- "o cliente ativo não precisa aparecer no funil comercial, após
+-- virar Cliente Ativo não precisa aparecer no Funil".
+--
+-- Novo campo em projetos: lista de Comerciais responsáveis por todo
+-- o núcleo. Complementa (não substitui) clientes.comercial_id, que
+-- continua permitindo atribuir um Comercial a um cliente específico.
+alter table public.projetos
+  add column if not exists comercial_ids uuid[] not null default '{}'::uuid[];
+
+-- Implementado no app.js:
+-- - clientComercialIds(client): reúne client.comercial_id +
+--   projetos.comercial_ids do projeto vinculado (client.projeto_id).
+-- - clientHasComercial() agora usa clientComercialIds().length > 0 —
+--   usado para filtrar Funil comercial e Atendimentos.
+-- - pipelineComercialFilter agora casa contra clientComercialIds(),
+--   não só o comercial_id direto do cliente.
+-- - Novo campo "Comerciais responsáveis" (multi-select) no dialog de
+--   Projeto/Núcleo, editável apenas por Admin ou por quem criou o
+--   projeto (mesma regra de canManageProject, já usada no botão
+--   Editar projeto).
+-- - renderPipeline() exclui clientes com status "Cliente Ativo" do
+--   Funil comercial (tanto da coluna do kanban quanto da lista
+--   filtrada) — depois que o cliente vira Cliente Ativo, ele some do
+--   funil, independente de ter Comercial atribuído.

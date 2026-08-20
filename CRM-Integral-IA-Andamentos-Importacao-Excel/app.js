@@ -46,6 +46,10 @@ const isConfigured = () =>
 const isAdmin = () => state.profile?.perfil === "admin";
 const isMarketingTeam = () => isAdmin() || state.profile?.perfil === "marketing";
 const canManageProject = (project) => isAdmin() || project?.created_by === state.user?.id;
+// Igual a canManageProject, mas trata "projeto novo" (ainda sem
+// created_by) como gerenciável por quem está criando — usado para
+// habilitar o campo de Comerciais responsáveis também na criação.
+const canManageProjectComerciais = (project) => !project || canManageProject(project);
 
 function escapeHtml(value = "") {
   return String(value)
@@ -125,11 +129,23 @@ function clientName(id) {
 // comercial e Atendimentos: só mostram clientes que já têm um
 // Comercial responsável — não basta ter trocado mensagem com
 // qualquer atendente no WhatsApp.
-function clientHasComercial(clientOrId) {
+// Comerciais responsáveis por um cliente: o comercial_id atribuído
+// diretamente ao cliente, mais os comerciais atribuídos ao núcleo
+// (projetos.comercial_ids) do projeto vinculado, se houver.
+function clientComercialIds(clientOrId) {
   const client = typeof clientOrId === "string"
     ? state.clients.find((item) => item.id === clientOrId)
     : clientOrId;
-  return Boolean(client?.comercial_id);
+  if (!client) return [];
+  const ids = new Set();
+  if (client.comercial_id) ids.add(client.comercial_id);
+  const project = client.projeto_id ? projectById(client.projeto_id) : null;
+  (project?.comercial_ids || []).forEach((id) => ids.add(id));
+  return [...ids];
+}
+
+function clientHasComercial(clientOrId) {
+  return clientComercialIds(clientOrId).length > 0;
 }
 
 function clientMunicipio(id) {
@@ -449,6 +465,7 @@ function renderOwnerOptions() {
   const comercialOptions = comercialProfiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.nome)}</option>`).join("");
   if ($("clientComercial")) $("clientComercial").innerHTML = `<option value="">Sem comercial atribuído</option>${comercialOptions}`;
   if ($("pipelineComercialFilter")) $("pipelineComercialFilter").innerHTML = `<option value="">Todos os comerciais</option>${comercialOptions}`;
+  if ($("projectComerciais")) $("projectComerciais").innerHTML = comercialOptions;
 
   const projectOptions = state.projects
     .filter((project) => project.ativo)
@@ -605,12 +622,15 @@ function renderPipeline() {
   const search = $("pipelineSearch").value.trim().toLowerCase();
   const owner = $("pipelineOwnerFilter").value;
   const comercial = $("pipelineComercialFilter")?.value || "";
+  // Cliente Ativo não aparece no Funil comercial: depois que o cliente
+  // vira Cliente Ativo, o funil deixa de ser relevante para ele.
+  const pipelineStatuses = CLIENT_STATUSES.filter((status) => status !== "Cliente Ativo");
   const filtered = state.clients.filter((client) => {
     const haystack = [client.codigo_processo, client.nome, client.municipio, client.nucleo, client.remessa].join(" ").toLowerCase();
-    return clientHasComercial(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner) && (!comercial || client.comercial_id === comercial);
+    return client.status !== "Cliente Ativo" && clientHasComercial(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner) && (!comercial || clientComercialIds(client).includes(comercial));
   });
 
-  $("pipelineBoard").innerHTML = CLIENT_STATUSES.map((status) => {
+  $("pipelineBoard").innerHTML = pipelineStatuses.map((status) => {
     const list = filtered.filter((client) => client.status === status);
     return `<section class="kanban-column">
       <div class="kanban-head"><h3>${escapeHtml(status)}</h3><span>${list.length}</span></div>
@@ -1196,12 +1216,23 @@ function openProjectDialog(project = null, prefill = null) {
   $("projectSigla").value = project?.sigla || prefill?.sigla || "";
   $("projectActive").value = String(project?.ativo ?? true);
   $("projectNotes").value = project?.observacoes || "";
+  if ($("projectComerciais")) {
+    const comercialIds = new Set(project?.comercial_ids || []);
+    [...$("projectComerciais").options].forEach((option) => {
+      option.selected = comercialIds.has(option.value);
+    });
+    $("projectComerciais").disabled = !canManageProjectComerciais(project);
+  }
   $("projectDialog").showModal();
 }
 
 async function saveProject(event) {
   event.preventDefault();
   const id = $("projectId").value;
+  const existingProject = id ? projectById(id) : null;
+  const comercialIds = canManageProjectComerciais(existingProject)
+    ? [...($("projectComerciais")?.selectedOptions || [])].map((option) => option.value)
+    : (existingProject?.comercial_ids ?? []);
   const payload = {
     nome: $("projectName").value.trim(),
     cidade: $("projectCity").value.trim(),
@@ -1209,6 +1240,7 @@ async function saveProject(event) {
     sigla: $("projectSigla").value.trim().toUpperCase() || null,
     ativo: $("projectActive").value === "true",
     observacoes: $("projectNotes").value.trim() || null,
+    comercial_ids: comercialIds,
   };
   let result;
   if (id) result = await supabase.from("projetos").update(payload).eq("id", id);

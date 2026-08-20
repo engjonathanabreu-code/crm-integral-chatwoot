@@ -69,6 +69,10 @@ alter table public.clientes add column if not exists comercial_id uuid reference
 create index if not exists clientes_comercial_id_idx on public.clientes (comercial_id);
 -- comercial_id: agente comercial responsável pelo cliente no Funil comercial,
 -- atribuído pelo Admin ou por quem cadastrou o cliente (created_by).
+alter table public.projetos add column if not exists comercial_ids uuid[] not null default '{}'::uuid[];
+-- comercial_ids: comerciais responsáveis por todo o núcleo/projeto — os
+-- clientes vinculados a ele (clientes.projeto_id) aparecem no Funil
+-- comercial de cada um, além do comercial_id direto do cliente.
 alter table public.clientes add column if not exists canal text default 'CRM';
 alter table public.clientes add column if not exists codigo_processo text;
 alter table public.clientes add column if not exists estado_civil text;
