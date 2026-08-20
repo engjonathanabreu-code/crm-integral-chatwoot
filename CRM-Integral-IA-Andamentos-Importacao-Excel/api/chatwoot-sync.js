@@ -176,18 +176,30 @@ function extractPhone(payload) {
   );
 }
 
+// Padroniza nomes de clientes: primeira letra de cada palavra em
+// maiúscula, o resto em minúsculo (mesma regra usada no app.js pro
+// cadastro manual e importação de Excel). Não aplicamos no fallback
+// "Contato WhatsApp" (não é um nome de pessoa).
+function titleCaseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
 function extractName(payload) {
   const attrs = customAttrs(payload);
   const c = getConversation(payload);
 
-  return (
+  const raw =
     attrs.ia_nome ||
     payload?.sender?.name ||
     payload?.contact?.name ||
     c?.meta?.sender?.name ||
     c?.contact?.name ||
-    "Contato WhatsApp"
-  );
+    null;
+
+  return raw ? titleCaseName(raw) : "Contato WhatsApp";
 }
 
 function extractCity(payload) {

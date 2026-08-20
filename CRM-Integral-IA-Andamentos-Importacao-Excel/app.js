@@ -112,7 +112,7 @@ function isValidNickname(value) {
 function clientDisplayName(client) {
   if (!client) return "Cliente removido";
   const code = String(client.codigo_processo || "").trim();
-  const name = client.nome || "Sem nome";
+  const name = client.nome ? titleCaseName(client.nome) : "Sem nome";
   return code ? `${code} — ${name}` : name;
 }
 
@@ -211,6 +211,18 @@ function canonicalCityName(rawCity) {
   const fromClient = state.clients.find((c) => normalizeCityKey(c.municipio) === key);
   if (fromClient) return fromClient.municipio;
   return clean;
+}
+
+// Padroniza nomes de clientes: primeira letra de cada palavra em
+// maiúscula, o resto em minúsculo (estilo "Proper" do Excel). Usa
+// \p{L} (qualquer letra Unicode) pra lidar bem com acentos, hífen,
+// apóstrofo e múltiplos nomes separados por "; " (várias palavras,
+// não só a primeira do texto inteiro).
+function titleCaseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1));
 }
 
 function friendlyErrorMessage(error) {
@@ -1422,7 +1434,7 @@ async function saveClient(event) {
   const ownerId = isAdmin() ? $("clientOwner").value : (existing?.owner_id || state.user.id);
   const payload = {
     owner_id: ownerId,
-    nome: $("clientName").value.trim(),
+    nome: titleCaseName($("clientName").value),
     telefone: $("clientPhone").value.trim() || null,
     telefone_normalizado: $("clientPhone").value.trim() ? normalizeBrazilPhone($("clientPhone").value) : null,
     email: $("clientEmail").value.trim() || null,
@@ -1730,7 +1742,7 @@ function importPayloadFromRow(row, projectData, template) {
     const { names, cpfs } = parseBeneficiarios(row.Beneficiarios);
     return {
       ...base,
-      nome: names.join("; ") || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
+      nome: names.map(titleCaseName).join("; ") || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
       nucleo: cleanImportText(row.CodigoNUI) || base.nucleo || null,
       cpf: cpfs.join("; ") || null,
       endereco: cleanImportText(row.Localizacao) || null,
@@ -1745,7 +1757,7 @@ function importPayloadFromRow(row, projectData, template) {
   const notes = [cleanImportText(row.Observacao), cleanImportText(row.InformacaoFaltante)].filter(Boolean).join("\n");
   return {
     ...base,
-    nome: cleanApplicantName(row.Requerente) || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
+    nome: titleCaseName(cleanApplicantName(row.Requerente)) || `Processo ${cleanImportText(row.CodigoProcesso) || "sem código"}`,
     observacoes: notes || null,
     estado_civil: cleanImportText(row.EstadoCivil) || null,
     tipo_documental: cleanImportText(row.Tipo) || null,
