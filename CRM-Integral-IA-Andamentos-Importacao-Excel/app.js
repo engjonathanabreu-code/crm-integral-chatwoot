@@ -425,7 +425,6 @@ function fillStaticOptions() {
   $("clientStatus").innerHTML = CLIENT_STATUSES.map((status) => `<option>${status}</option>`).join("");
   $("clientStatusFilter").innerHTML = `<option value="">Todos os status</option>${CLIENT_STATUSES.map((status) => `<option>${status}</option>`).join("")}`;
   $("ticketSector").innerHTML = TICKET_SECTORS.map((sector) => `<option>${sector}</option>`).join("");
-  $("ticketSectorFilter").innerHTML = `<option value="">Todos os setores</option>${TICKET_SECTORS.map((sector) => `<option>${sector}</option>`).join("")}`;
   $("ticketStatus").innerHTML = TICKET_STATUSES.map((status) => `<option>${status}</option>`).join("");
   $("ticketStatusFilter").innerHTML = `<option value="">Todos os status</option>${TICKET_STATUSES.map((status) => `<option>${status}</option>`).join("")}`;
   $("ticketStandaloneSector").innerHTML = TICKET_SECTORS.map((sector) => `<option>${sector}</option>`).join("");
@@ -744,7 +743,7 @@ function renderTickets() {
   const search = $("ticketSearch").value.trim().toLowerCase();
   const municipality = $("ticketMunicipalityFilter").value;
   const nucleus = $("ticketNucleusFilter").value;
-  const sector = $("ticketSectorFilter").value;
+  const agent = $("ticketAgentFilter").value;
   const status = $("ticketStatusFilter").value;
 
   const crmTicketsPool = state.tickets.filter(isCrmTicket);
@@ -758,12 +757,19 @@ function renderTickets() {
   $("ticketNucleusFilter").innerHTML = `<option value="">Todos os NUIs</option>${nucleusOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   $("ticketNucleusFilter").value = nucleusOptions.includes(nucleus) ? nucleus : "";
 
+  // Agentes que registraram atendimento no CRM (created_by), não os
+  // setores — a aba já mostra o setor de cada atendimento na lista.
+  const agentIds = [...new Set(crmTicketsPool.map((ticket) => ticket.created_by).filter(Boolean))]
+    .sort((a, b) => profileName(a).localeCompare(profileName(b), "pt-BR"));
+  $("ticketAgentFilter").innerHTML = `<option value="">Todos os agentes</option>${agentIds.map((id) => `<option value="${id}">${escapeHtml(profileName(id))}</option>`).join("")}`;
+  $("ticketAgentFilter").value = agentIds.includes(agent) ? agent : "";
+
   const filtered = state.tickets.filter((ticket) => {
     const haystack = [ticket.assunto, ticket.observacao, clientName(ticket.cliente_id)].join(" ").toLowerCase();
     return isCrmTicket(ticket) && (!search || haystack.includes(search)) &&
       (!municipality || clientMunicipio(ticket.cliente_id) === municipality) &&
       (!nucleus || clientNucleo(ticket.cliente_id) === nucleus) &&
-      (!sector || ticket.setor === sector) && (!status || ticket.status === status);
+      (!agent || ticket.created_by === agent) && (!status || ticket.status === status);
   });
 
   $("ticketResultCount").textContent = filtered.length ? `${filtered.length} atendimento(s) encontrado(s).` : "";
@@ -2465,7 +2471,7 @@ function bindEvents() {
 
   ["clientSearch", "municipalityFilter", "nucleusFilter", "clientStatusFilter", "clientOwnerFilter"].forEach((id) => $(id).addEventListener(id === "clientSearch" ? "input" : "change", renderClients));
   ["pipelineSearch", "pipelineOwnerFilter", "pipelineComercialFilter"].forEach((id) => $(id).addEventListener(id === "pipelineSearch" ? "input" : "change", renderPipeline));
-  ["ticketSearch", "ticketMunicipalityFilter", "ticketNucleusFilter", "ticketSectorFilter", "ticketStatusFilter"].forEach((id) => $(id).addEventListener(id === "ticketSearch" ? "input" : "change", () => { state.ticketsVisible = LIST_PAGE_SIZE; renderTickets(); }));
+  ["ticketSearch", "ticketMunicipalityFilter", "ticketNucleusFilter", "ticketAgentFilter", "ticketStatusFilter"].forEach((id) => $(id).addEventListener(id === "ticketSearch" ? "input" : "change", () => { state.ticketsVisible = LIST_PAGE_SIZE; renderTickets(); }));
   ["taskSearch", "taskMunicipalityFilter", "taskNucleusFilter", "taskStateFilter"].forEach((id) => $(id).addEventListener(id === "taskSearch" ? "input" : "change", () => { state.tasksVisible = LIST_PAGE_SIZE; renderTasks(); }));
   ["projectSearch", "projectStateFilter", "projectActiveFilter"].forEach((id) => $(id).addEventListener(id === "projectSearch" ? "input" : "change", renderProjects));
   ["progressSearch", "progressStateFilter", "progressStatusFilter", "progressActivityFilter"].forEach((id) => {
