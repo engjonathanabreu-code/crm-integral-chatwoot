@@ -206,6 +206,40 @@ function extractCity(payload) {
   return customAttrs(payload).ia_cidade || null;
 }
 
+// Siglas oficiais de UF — usadas para só separar o estado quando a
+// última palavra do texto realmente bate com uma delas, e não
+// qualquer palavra de 2 letras (evita cortar município composto por
+// engano, ex.: "Rio do Sul" não deve virar município "Rio do" + "Sul"
+// como se fosse estado).
+const UFS_VALIDAS = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS",
+  "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC",
+  "SP", "SE", "TO",
+]);
+
+// Separa "Ilhota SC", "Ilhota/SC", "Ilhota - SC" em { cidade: "Ilhota",
+// estado: "SC" }. Fica atento a município composto (várias palavras
+// antes da sigla, ex.: "Rio do Sul SC", "São Bento do Sul SC") — só
+// separa quando a ÚLTIMA palavra é exatamente uma sigla de UF válida;
+// caso contrário devolve o texto inteiro como cidade, sem estado.
+function splitCityState(rawCity) {
+  const clean = String(rawCity || "").trim();
+  if (!clean) return { cidade: null, estado: null };
+
+  const match = clean.match(/^(.*?)[\s\/\-–—]+([A-Za-z]{2})$/);
+  if (!match) return { cidade: clean, estado: null };
+
+  const [, cidadePart, ufPart] = match;
+  const uf = ufPart.toUpperCase();
+  const cidade = cidadePart.trim();
+
+  if (!cidade || !UFS_VALIDAS.has(uf)) {
+    return { cidade: clean, estado: null };
+  }
+
+  return { cidade, estado: uf };
+}
+
 // Chave de comparação "frouxa" para nome de cidade: sem acento, minúsculo,
 // sem sufixo de estado ("Itaiópolis/SC", "Itaiópolis - SC" -> "itaiopolis").
 function normalizeCityKey(value) {
@@ -448,11 +482,13 @@ async function findOrCreateClient(payload) {
     getConversation(payload)?.meta?.sender?.id ||
     null;
 
+  const cityState = splitCityState(extractCity(payload));
+
   const patch = {
     nome: extractName(payload),
     telefone: extractPhone(payload) || null,
     telefone_normalizado: phone || null,
-    municipio: await resolveCanonicalCity(extractCity(payload)),
+    municipio: await resolveCanonicalCity(cityState.cidade),
     origem: "WhatsApp",
     canal: "WhatsApp",
     chatwoot_contact_id: contactId,
@@ -461,6 +497,14 @@ async function findOrCreateClient(payload) {
     ultimo_agente: extractAgent(payload),
     last_contact_at: new Date().toISOString(),
   };
+
+  // Só grava a sigla de estado quando ela foi de fato identificada no
+  // texto ("Ilhota SC" -> "SC"); se o cliente só mandou o nome do
+  // município (sem UF), não sobrescreve um estado já preenchido antes
+  // (manualmente no CRM ou numa mensagem anterior com a UF).
+  if (cityState.estado) {
+    patch.estado = cityState.estado;
+  }
 
   const existing = await findClientByPhoneOrContact(phone, contactId);
 
