@@ -1757,6 +1757,17 @@ function renderClientDetail(clientId) {
       <p>${escapeHtml(item.text || "")}</p>
     </article>`).join("") : emptyState("Nenhum histórico registrado.");
 
+  // Só os atendimentos (tickets) registrados por agentes direto no CRM
+  // — diferente da Linha do tempo completa acima, que também mistura
+  // mensagens sincronizadas do WhatsApp/Chatwoot (kind "interaction").
+  const crmTickets = activity.filter((item) => item.kind === "ticket").sort((a, b) => new Date(b.date) - new Date(a.date));
+  $("detailCrmTickets").innerHTML = crmTickets.length ? crmTickets.map((item) => `
+    <article class="timeline-item">
+      <h4>${escapeHtml(item.title)}</h4>
+      <time>${formatDateTime(item.date)} • ${escapeHtml(item.author || "Sistema")}</time>
+      <p>${escapeHtml(item.text || "")}</p>
+    </article>`).join("") : emptyState("Nenhum atendimento registrado no CRM ainda.");
+
   $("taskDueDate").value = today();
   $("taskAssignee").value = client.owner_id || state.user.id;
 }
