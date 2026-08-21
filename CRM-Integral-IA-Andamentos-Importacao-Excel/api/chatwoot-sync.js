@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { MUNICIPIOS_SC } from "./municipios-sc.js";
 
 export const config = {
   api: {
@@ -309,6 +310,65 @@ async function knownCityNames() {
   return map;
 }
 
+// Distância de Levenshtein (edição) simples, usada só pra achar o
+// município conhecido mais parecido com o texto que o cliente mandou.
+function levenshteinDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let curr = new Array(n + 1).fill(0);
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + custo);
+    }
+    [prev, curr] = [curr, prev];
+  }
+
+  return prev[n];
+}
+
+const MUNICIPIOS_SC_NORMALIZADOS = MUNICIPIOS_SC.map((nome) => ({
+  nome,
+  chave: normalizeCityKey(nome),
+}));
+
+// Abaixo desse tanto de semelhança (0 a 1), o texto não é considerado
+// "o mesmo" município de nenhum item da lista de referência.
+const SIMILARIDADE_MINIMA_MUNICIPIO = 0.78;
+
+// Compara o texto (já sem sigla de UF) com a lista oficial de
+// municípios conhecidos (municipios-sc.js) e devolve o nome real mais
+// parecido. Fica atento a município composto (várias palavras) porque
+// compara a string inteira normalizada, não palavra por palavra. Se
+// nada bater o suficiente, devolve null — o cliente fica sem
+// município em vez de gravar um texto não reconhecido.
+function matchMunicipioConhecido(rawCity) {
+  const key = normalizeCityKey(rawCity);
+  if (!key) return null;
+
+  let melhorNome = null;
+  let melhorScore = 0;
+
+  for (const candidato of MUNICIPIOS_SC_NORMALIZADOS) {
+    const distancia = levenshteinDistance(key, candidato.chave);
+    const maiorTamanho = Math.max(key.length, candidato.chave.length) || 1;
+    const score = 1 - distancia / maiorTamanho;
+
+    if (score > melhorScore) {
+      melhorScore = score;
+      melhorNome = candidato.nome;
+    }
+  }
+
+  return melhorScore >= SIMILARIDADE_MINIMA_MUNICIPIO ? melhorNome : null;
+}
+
 async function resolveCanonicalCity(rawCity) {
   if (!looksLikeCity(rawCity)) {
     return null;
@@ -318,8 +378,16 @@ async function resolveCanonicalCity(rawCity) {
   const key = normalizeCityKey(clean);
   if (!key) return null;
 
+  // 1) Grafia já usada em algum projeto/cliente do CRM tem prioridade
+  // (evita fragmentar agrupamentos já existentes com uma variante nova).
   const known = await knownCityNames();
-  return known.get(key) || clean;
+  if (known.has(key)) return known.get(key);
+
+  // 2) Não é uma grafia já conhecida — compara com a lista oficial de
+  // municípios e usa o nome real mais parecido. Se não achar nada
+  // parecido o suficiente, devolve null (sem município) em vez de
+  // aceitar qualquer texto como se fosse cidade.
+  return matchMunicipioConhecido(clean);
 }
 
 const SETORES_VALIDOS = [
