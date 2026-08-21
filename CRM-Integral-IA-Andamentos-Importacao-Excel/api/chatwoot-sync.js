@@ -217,6 +217,12 @@ const UFS_VALIDAS = new Set([
   "SP", "SE", "TO",
 ]);
 
+// Chave "frouxa" pra comparar texto livre (nome x cidade), sem
+// depender de acento/maiúscula/espaço duplicado.
+function normalizeCompareKey(value) {
+  return stripAccents(String(value || "").trim().toLowerCase()).replace(/\s+/g, " ");
+}
+
 // Separa "Ilhota SC", "Ilhota/SC", "Ilhota - SC" em { cidade: "Ilhota",
 // estado: "SC" }. Fica atento a município composto (várias palavras
 // antes da sigla, ex.: "Rio do Sul SC", "São Bento do Sul SC") — só
@@ -483,12 +489,23 @@ async function findOrCreateClient(payload) {
     null;
 
   const cityState = splitCityState(extractCity(payload));
+  const nomeCliente = extractName(payload);
+
+  // Às vezes o cliente responde o próprio nome na hora que a IA pede
+  // o município (confundiu a pergunta), e esse mesmo texto aparece
+  // depois de novo, agora como nome de verdade. Quando a "cidade"
+  // capturada é literalmente igual ao nome do cliente, não é um
+  // município de verdade — grava como sem município em vez do nome
+  // da pessoa.
+  const cidadeRepeteNome =
+    Boolean(cityState.cidade) &&
+    normalizeCompareKey(cityState.cidade) === normalizeCompareKey(nomeCliente);
 
   const patch = {
-    nome: extractName(payload),
+    nome: nomeCliente,
     telefone: extractPhone(payload) || null,
     telefone_normalizado: phone || null,
-    municipio: await resolveCanonicalCity(cityState.cidade),
+    municipio: cidadeRepeteNome ? null : await resolveCanonicalCity(cityState.cidade),
     origem: "WhatsApp",
     canal: "WhatsApp",
     chatwoot_contact_id: contactId,
@@ -501,8 +518,9 @@ async function findOrCreateClient(payload) {
   // Só grava a sigla de estado quando ela foi de fato identificada no
   // texto ("Ilhota SC" -> "SC"); se o cliente só mandou o nome do
   // município (sem UF), não sobrescreve um estado já preenchido antes
-  // (manualmente no CRM ou numa mensagem anterior com a UF).
-  if (cityState.estado) {
+  // (manualmente no CRM ou numa mensagem anterior com a UF). Também
+  // não grava se a "cidade" era, na real, o nome repetido.
+  if (cityState.estado && !cidadeRepeteNome) {
     patch.estado = cityState.estado;
   }
 
