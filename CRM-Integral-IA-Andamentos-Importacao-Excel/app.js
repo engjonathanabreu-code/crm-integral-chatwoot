@@ -603,7 +603,7 @@ function buildRecentActivity(clientId = null) {
 
   const tickets = state.tickets
     .filter((item) => !clientId || item.cliente_id === clientId)
-    .map((item) => ({ date: item.created_at, title: `Atendimento — ${item.assunto}`, text: `${item.setor} • ${item.status}${item.observacao ? ` • ${item.observacao}` : ""}`, client: clientName(item.cliente_id), author: profileName(item.created_by), kind: "ticket" }));
+    .map((item) => ({ date: item.created_at, title: `Atendimento — ${item.assunto}`, text: `${item.setor} • ${item.status}${item.observacao ? ` • ${item.observacao}` : ""}`, client: clientName(item.cliente_id), author: profileName(item.created_by), kind: "ticket", origem: item.origem }));
 
   const tasks = state.tasks
     .filter((item) => !clientId || item.cliente_id === clientId)
@@ -728,6 +728,18 @@ function renderPipeline() {
   }).join("");
 }
 
+// Atendimento registrado direto no CRM (por um agente, na ficha do
+// cliente ou no atendimento avulso) — origem "CRM" (default da
+// coluna). Diferente do que era antes (clientHasComercial), que
+// escondia da aba Atendimentos qualquer atendimento de um cliente sem
+// Comercial atribuído, mesmo quando o agente tinha acabado de
+// registrá-lo. Isso também deixa de fora os atendimentos criados
+// automaticamente pelo webhook do Chatwoot (origem "Chatwoot") a cada
+// conversa nova do WhatsApp, que não são ações de um agente no CRM.
+function isCrmTicket(ticket) {
+  return ticket.origem === "CRM";
+}
+
 function renderTickets() {
   const search = $("ticketSearch").value.trim().toLowerCase();
   const municipality = $("ticketMunicipalityFilter").value;
@@ -735,20 +747,20 @@ function renderTickets() {
   const sector = $("ticketSectorFilter").value;
   const status = $("ticketStatusFilter").value;
 
-  const assignedTickets = state.tickets.filter((ticket) => clientHasComercial(ticket.cliente_id));
+  const crmTicketsPool = state.tickets.filter(isCrmTicket);
 
-  const municipalities = [...new Set(assignedTickets.map((ticket) => clientMunicipio(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const municipalities = [...new Set(crmTicketsPool.map((ticket) => clientMunicipio(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("ticketMunicipalityFilter").innerHTML = `<option value="">Todos os municípios</option>${municipalities.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   $("ticketMunicipalityFilter").value = municipality;
 
-  const nucleusPool = assignedTickets.filter((ticket) => !municipality || clientMunicipio(ticket.cliente_id) === municipality);
+  const nucleusPool = crmTicketsPool.filter((ticket) => !municipality || clientMunicipio(ticket.cliente_id) === municipality);
   const nucleusOptions = [...new Set(nucleusPool.map((ticket) => clientNucleo(ticket.cliente_id)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("ticketNucleusFilter").innerHTML = `<option value="">Todos os NUIs</option>${nucleusOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`;
   $("ticketNucleusFilter").value = nucleusOptions.includes(nucleus) ? nucleus : "";
 
   const filtered = state.tickets.filter((ticket) => {
     const haystack = [ticket.assunto, ticket.observacao, clientName(ticket.cliente_id)].join(" ").toLowerCase();
-    return clientHasComercial(ticket.cliente_id) && (!search || haystack.includes(search)) &&
+    return isCrmTicket(ticket) && (!search || haystack.includes(search)) &&
       (!municipality || clientMunicipio(ticket.cliente_id) === municipality) &&
       (!nucleus || clientNucleo(ticket.cliente_id) === nucleus) &&
       (!sector || ticket.setor === sector) && (!status || ticket.status === status);
@@ -1760,7 +1772,7 @@ function renderClientDetail(clientId) {
   // Só os atendimentos (tickets) registrados por agentes direto no CRM
   // — diferente da Linha do tempo completa acima, que também mistura
   // mensagens sincronizadas do WhatsApp/Chatwoot (kind "interaction").
-  const crmTickets = activity.filter((item) => item.kind === "ticket").sort((a, b) => new Date(b.date) - new Date(a.date));
+  const crmTickets = activity.filter((item) => item.kind === "ticket" && item.origem === "CRM").sort((a, b) => new Date(b.date) - new Date(a.date));
   $("detailCrmTickets").innerHTML = crmTickets.length ? crmTickets.map((item) => `
     <article class="timeline-item">
       <h4>${escapeHtml(item.title)}</h4>
