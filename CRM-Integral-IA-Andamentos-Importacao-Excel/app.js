@@ -1973,7 +1973,7 @@ function importPayloadFromRow(row, projectData, template) {
     ...projectData,
     remessa: null,
     origem: "Importação Excel",
-    status: "Contato feito",
+    status: "Cliente Ativo",
     valor_estimado: 0,
     responsavel: null,
     codigo_processo: cleanImportText(row.CodigoProcesso) || null,
