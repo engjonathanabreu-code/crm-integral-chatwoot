@@ -73,6 +73,12 @@ alter table public.projetos add column if not exists comercial_ids uuid[] not nu
 -- comercial_ids: comerciais responsáveis por todo o núcleo/projeto — os
 -- clientes vinculados a ele (clientes.projeto_id) aparecem no Funil
 -- comercial de cada um, além do comercial_id direto do cliente.
+alter table public.clientes add column if not exists agentes_atribuidos uuid[] not null default '{}'::uuid[];
+create index if not exists clientes_agentes_atribuidos_gin on public.clientes using gin (agentes_atribuidos);
+-- agentes_atribuidos: lista de agentes atribuídos ao cliente (diferente
+-- do owner_id, que é único). Cresce automaticamente quando um agente
+-- registra um Atendimento (o agente + o Comercial do cliente entram na
+-- lista) e também pode ser editado manualmente (Admin ou created_by).
 alter table public.clientes add column if not exists canal text default 'CRM';
 alter table public.clientes add column if not exists codigo_processo text;
 alter table public.clientes add column if not exists estado_civil text;

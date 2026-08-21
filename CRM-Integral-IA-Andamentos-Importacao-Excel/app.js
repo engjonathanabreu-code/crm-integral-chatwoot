@@ -467,6 +467,8 @@ function renderOwnerOptions() {
   if ($("pipelineComercialFilter")) $("pipelineComercialFilter").innerHTML = `<option value="">Todos os comerciais</option>${comercialOptions}`;
   if ($("projectComerciais")) $("projectComerciais").innerHTML = comercialOptions;
 
+  if ($("clientAgentsAssigned")) $("clientAgentsAssigned").innerHTML = options;
+
   const projectOptions = state.projects
     .filter((project) => project.ativo)
     .sort((a, b) => `${a.estado}-${a.cidade}-${a.nome}`.localeCompare(`${b.estado}-${b.cidade}-${b.nome}`, "pt-BR"))
@@ -1542,6 +1544,29 @@ function canAssignComercial(existingClient) {
   return existingClient.created_by === state.user.id;
 }
 
+// Mesma regra de canAssignComercial: só Admin ou quem cadastrou o
+// cliente pode editar manualmente a lista de Agentes atribuídos.
+function canManageAssignedAgents(existingClient) {
+  if (isAdmin()) return true;
+  if (!existingClient) return true;
+  return existingClient.created_by === state.user.id;
+}
+
+// Ao registrar um Atendimento, o cliente fica automaticamente
+// atribuído a quem registrou + ao Comercial responsável (se houver) —
+// além dos agentes já atribuídos antes. Um cliente pode ter vários
+// agentes atribuídos (diferente de "Dono do registro", que é único).
+async function attributeAgentToClient(clienteId) {
+  const client = state.clients.find((item) => item.id === clienteId);
+  if (!client) return;
+  const assigned = new Set(client.agentes_atribuidos || []);
+  const before = assigned.size;
+  assigned.add(state.user.id);
+  if (client.comercial_id) assigned.add(client.comercial_id);
+  if (assigned.size === before) return;
+  await supabase.from("clientes").update({ agentes_atribuidos: [...assigned] }).eq("id", clienteId);
+}
+
 function openNewClient() {
   $("clientForm").reset();
   $("clientId").value = "";
@@ -1555,6 +1580,10 @@ function openNewClient() {
   if ($("clientComercial")) {
     $("clientComercial").value = "";
     $("clientComercial").disabled = !canAssignComercial(null);
+  }
+  if ($("clientAgentsAssigned")) {
+    [...$("clientAgentsAssigned").options].forEach((option) => { option.selected = false; });
+    $("clientAgentsAssigned").disabled = !canManageAssignedAgents(null);
   }
   $("clientFormDialog").showModal();
 }
@@ -1580,6 +1609,13 @@ function openEditClient(client) {
     $("clientComercial").value = client.comercial_id || "";
     $("clientComercial").disabled = !canAssignComercial(client);
   }
+  if ($("clientAgentsAssigned")) {
+    const assignedIds = new Set(client.agentes_atribuidos || []);
+    [...$("clientAgentsAssigned").options].forEach((option) => {
+      option.selected = assignedIds.has(option.value);
+    });
+    $("clientAgentsAssigned").disabled = !canManageAssignedAgents(client);
+  }
   $("clientNotes").value = client.observacoes || "";
   $("deleteClientButton").classList.remove("hidden");
   $("clientFormDialog").showModal();
@@ -1593,9 +1629,13 @@ async function saveClient(event) {
   const comercialId = canAssignComercial(existing)
     ? ($("clientComercial")?.value || null)
     : (existing?.comercial_id ?? null);
+  const agentesAtribuidos = canManageAssignedAgents(existing)
+    ? [...($("clientAgentsAssigned")?.selectedOptions || [])].map((option) => option.value)
+    : (existing?.agentes_atribuidos ?? []);
   const payload = {
     owner_id: ownerId,
     comercial_id: comercialId,
+    agentes_atribuidos: agentesAtribuidos,
     nome: titleCaseName($("clientName").value),
     telefone: $("clientPhone").value.trim() || null,
     telefone_normalizado: $("clientPhone").value.trim() ? normalizeBrazilPhone($("clientPhone").value) : null,
@@ -1644,15 +1684,18 @@ async function saveClient(event) {
 function describeClientChanges(oldClient, payload) {
   const fields = {
     nome: "Nome", telefone: "Telefone", email: "E-mail", projeto_id: "Projeto", estado: "Estado", municipio: "Município", nucleo: "Núcleo", remessa: "Remessa",
-    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", responsavel: "Responsável", codigo_processo: "Código do processo", estado_civil: "Estado civil", observacoes: "Observações", owner_id: "Dono do registro", comercial_id: "Comercial",
+    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", responsavel: "Responsável", codigo_processo: "Código do processo", estado_civil: "Estado civil", observacoes: "Observações", owner_id: "Dono do registro", comercial_id: "Comercial", agentes_atribuidos: "Agentes atribuídos",
   };
   return Object.entries(fields).flatMap(([key, label]) => {
     const before = oldClient[key] ?? "";
     const after = payload[key] ?? "";
-    if (String(before) === String(after)) return [];
+    const beforeKey = key === "agentes_atribuidos" ? [...(before || [])].sort().join(",") : before;
+    const afterKey = key === "agentes_atribuidos" ? [...(after || [])].sort().join(",") : after;
+    if (String(beforeKey) === String(afterKey)) return [];
     const format = (value) =>
       key === "valor_estimado" ? money(value) :
       key === "comercial_id" ? (value ? profileName(value) : "Sem comercial atribuído") :
+      key === "agentes_atribuidos" ? (Array.isArray(value) && value.length ? value.map(profileName).join(", ") : "Nenhum agente atribuído") :
       key === "owner_id" ? profileName(value) :
       key === "projeto_id" ? projectLabel(projectById(value)) :
       String(value || "Não informado");
@@ -1692,7 +1735,9 @@ function renderClientDetail(clientId) {
     ["Núcleo", client.nucleo || "-"], ["Remessa", client.remessa || "-"], ["Origem", client.origem || "-"],
     ["Canal", client.canal || "CRM"], ["Último setor", client.ultimo_setor || "-"], ["Último agente", client.ultimo_agente || "-"],
     ["Responsável operacional", client.responsavel || "-"], ["Dono do registro", profileName(client.owner_id)],
-    ["Comercial", client.comercial_id ? profileName(client.comercial_id) : "Sem comercial atribuído"], ["Código do processo", client.codigo_processo || "-"],
+    ["Comercial", client.comercial_id ? profileName(client.comercial_id) : "Sem comercial atribuído"],
+    ["Agentes atribuídos", (client.agentes_atribuidos || []).length ? client.agentes_atribuidos.map(profileName).join(", ") : "Nenhum agente atribuído"],
+    ["Código do processo", client.codigo_processo || "-"],
     ["CPF", client.cpf || "-"], ["Endereço", client.endereco || "-"], ["Tipo de imóvel", client.tipo_imovel || "-"],
     ["Tipo de posse", client.tipo_posse || "-"], ["Área da posse", client.area_posse || "-"],
     ["Estado civil", client.estado_civil || "-"], ["Tipo documental", client.tipo_documental || "-"], ["Contrato", client.contrato_status || "-"],
@@ -2016,8 +2061,9 @@ async function saveHistory(event) {
 
 async function saveTicket(event) {
   event.preventDefault();
+  const clienteId = state.selectedClientId;
   const { error } = await supabase.from("atendimentos").insert({
-    cliente_id: state.selectedClientId,
+    cliente_id: clienteId,
     created_by: state.user.id,
     setor: $("ticketSector").value,
     assunto: $("ticketSubject").value.trim(),
@@ -2025,6 +2071,7 @@ async function saveTicket(event) {
     observacao: $("ticketNotes").value.trim() || null,
   });
   if (error) return showToast(friendlyErrorMessage(error), "error");
+  await attributeAgentToClient(clienteId);
   event.target.reset();
   await loadData();
   showToast("Atendimento registrado.");
@@ -2145,6 +2192,7 @@ async function saveStandaloneTicket(event) {
     observacao: $("ticketStandaloneNotes").value.trim() || null,
   });
   if (error) return showToast(friendlyErrorMessage(error), "error");
+  await attributeAgentToClient(clienteId);
   $("ticketStandaloneDialog").close();
   await loadData();
   showToast("Atendimento registrado.");
