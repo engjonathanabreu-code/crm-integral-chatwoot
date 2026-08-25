@@ -84,6 +84,7 @@
 
       <div class="sidebar-footer">
         <button id="refreshButton" class="ghost full">Atualizar dados</button>
+        <button id="changePasswordButton" class="ghost full">Alterar senha</button>
         <button id="logoutButton" class="ghost full">Sair</button>
       </div>
     </aside>
@@ -97,7 +98,7 @@
         </div>
         <div class="top-actions">
           <span id="syncStatus" class="sync-status">Sincronizado</span>
-          <button id="importClientsButton" class="secondary admin-only hidden">Importar Excel</button>
+          <button id="importClientsButton" class="secondary">Importar Excel</button>
           <button id="newClientButton" class="primary">+ Novo cliente</button>
         </div>
       </header>
@@ -108,6 +109,7 @@
           <article class="metric-card"><span>Em negociação</span><strong id="metricNegotiation">0</strong><small>oportunidades ativas</small></article>
           <article class="metric-card"><span>Atendimentos abertos</span><strong id="metricOpenTickets">0</strong><small>aguardando conclusão</small></article>
           <article class="metric-card"><span>Tarefas pendentes</span><strong id="metricPendingTasks">0</strong><small>ações programadas</small></article>
+          <article class="metric-card"><span>Tempo médio de resposta</span><strong id="metricResponseTime">—</strong><small id="metricResponseTimeNote">agente humano no WhatsApp</small></article>
         </div>
 
         <div class="dashboard-grid">
@@ -135,6 +137,11 @@
             <div class="panel-head"><div><p class="eyebrow">Histórico</p><h2>Interações recentes</h2></div></div>
             <div id="dashboardHistory" class="record-list"></div>
           </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Atendimento</p><h2>Tempo de resposta por agente</h2></div></div>
+            <div id="dashboardResponseTimes" class="summary-list"></div>
+          </article>
         </div>
       </section>
 
@@ -154,6 +161,7 @@
         <div class="filters panel compact">
           <input id="pipelineSearch" placeholder="Buscar no funil..." />
           <select id="pipelineOwnerFilter" class="admin-only hidden"><option value="">Todos os responsáveis</option></select>
+          <select id="pipelineComercialFilter"><option value="">Todos os comerciais</option></select>
         </div>
         <div id="pipelineBoard" class="kanban-board"></div>
       </section>
@@ -163,7 +171,7 @@
           <input id="ticketSearch" placeholder="Buscar cliente ou assunto..." />
           <select id="ticketMunicipalityFilter"><option value="">Todos os municípios</option></select>
           <select id="ticketNucleusFilter"><option value="">Todos os NUIs</option></select>
-          <select id="ticketSectorFilter"><option value="">Todos os setores</option></select>
+          <select id="ticketAgentFilter"><option value="">Todos os agentes</option></select>
           <select id="ticketStatusFilter"><option value="">Todos os status</option></select>
           <button id="newTicketButton" class="primary">+ Novo atendimento</button>
         </div>
@@ -201,7 +209,7 @@
               <option value="all">Todos</option>
               <option value="inactive">Inativos</option>
             </select>
-            <button id="newProjectButton" class="primary admin-only hidden">+ Novo projeto</button>
+            <button id="newProjectButton" class="primary">+ Novo projeto</button>
           </div>
         </div>
         <div id="projectSchemaNotice" class="panel schema-notice hidden">
@@ -292,7 +300,7 @@
               <label>E-mail<input id="newUserEmail" type="email" required placeholder="nome@empresa.com.br" /></label>
               <label>Senha inicial<input id="newUserPassword" type="password" minlength="8" required /></label>
               <label>Perfil
-                <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="admin">Administrador</option></select>
+                <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="comercial">Comercial</option><option value="admin">Administrador</option></select>
               </label>
               <button class="primary" type="submit">Criar usuário</button>
               <p id="createUserMessage" class="form-message"></p>
@@ -313,6 +321,7 @@
               <span>Nome completo</span>
               <span>Perfil</span>
               <span>Status</span>
+              <span>Senha</span>
             </div>
             <div id="usersList" class="users-table-list"></div>
           </article>
@@ -351,6 +360,12 @@
         <label>Código do processo<input id="clientProcessCode" placeholder="Ex.: GTB01_0386" /></label>
         <label>Estado civil<input id="clientCivilStatus" /></label>
         <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
+        <label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>
+          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+        </label>
+        <label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>
+          <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente só por Admin ou por quem cadastrou o cliente.</small>
+        </label>
         <label class="span-two">Observações<textarea id="clientNotes"></textarea></label>
       </div>
       <div class="dialog-actions">
@@ -368,7 +383,7 @@
         <div>
           <p class="eyebrow">Importação em massa</p>
           <h2>Importar clientes por Excel</h2>
-          <p class="muted">Compatível com a planilha Dados Documental GTB. O NUI é opcional e pode ser alterado depois.</p>
+          <p class="muted">Compatível com o modelo Dados Documental GTB e com o modelo Beneficiários/NUI (Localizacao, Objeto, Posse, AreaPosse). O NUI é opcional e pode ser alterado depois.</p>
         </div>
         <button type="button" class="icon-button" data-close-dialog="clientImportDialog">×</button>
       </div>
@@ -380,16 +395,17 @@
           <label>Excel ou CSV
             <input id="clientImportFile" type="file" accept=".xlsx,.xls,.csv" />
           </label>
-          <p class="muted small-note">Colunas reconhecidas: CodigoProcesso, Requerente, Contato, EstadoCivil, Tipo, Contrato, Procuracao, Requerimento, Distrato, DocumentoFaltante, InformacaoFaltante, Observacao e Situacao.</p>
+          <p class="muted small-note">Modelo Documental: CodigoProcesso, Requerente, Contato, EstadoCivil, Tipo, Contrato, Procuracao, Requerimento, Distrato, DocumentoFaltante, InformacaoFaltante, Observacao, Situacao.</p>
+          <p class="muted small-note">Modelo Beneficiários/NUI: CodigoProcesso, CodigoNUI, Beneficiarios, Contato, Localizacao, Objeto, Posse, AreaPosse, Situacao. O modelo é detectado automaticamente pelas colunas do arquivo.</p>
         </article>
 
         <article class="panel flat">
           <p class="eyebrow">2. NUI</p>
-          <h3>Vinculação opcional</h3>
-          <label>Projeto / NUI
+          <h3>Vinculação automática</h3>
+          <label>Projeto / NUI (reserva, se o prefixo do código não for reconhecido)
             <select id="clientImportProject"><option value="">Sem NUI — vincular depois</option></select>
           </label>
-          <p class="muted small-note">Se escolher um NUI, município, estado e núcleo serão preenchidos automaticamente para todos os registros importados.</p>
+          <p class="muted small-note">O CRM identifica o prefixo do Código do Processo de cada linha (ex.: GTB01 em GTB01_0386) e preenche projeto, município, estado e núcleo automaticamente. Se um prefixo não tiver projeto cadastrado com essa sigla, é usado o Projeto/NUI selecionado aqui.</p>
         </article>
 
         <article class="panel flat">
@@ -447,6 +463,12 @@
           <article class="panel flat">
             <div class="panel-head"><div><p class="eyebrow">WhatsApp / Chatwoot</p><h3>Interações sincronizadas</h3></div></div>
             <p class="muted">Mensagens do cliente, da IA e dos agentes aparecem automaticamente na linha do tempo abaixo.</p>
+          </article>
+
+          <article class="panel flat">
+            <div class="panel-head"><div><p class="eyebrow">Registrado no CRM</p><h3>Atendimentos no CRM</h3></div></div>
+            <p class="muted">Só atendimentos registrados por agentes direto no CRM — não inclui mensagens sincronizadas do WhatsApp/Chatwoot.</p>
+            <div id="detailCrmTickets" class="timeline"></div>
           </article>
 
           <article class="panel flat">
@@ -559,7 +581,10 @@
         <label class="span-two">Nome do Projeto / Núcleo<input id="projectName" required placeholder="Ex.: Bairro Seminário" /></label>
         <label>Cidade<input id="projectCity" required /></label>
         <label>Estado<input id="projectState" maxlength="2" required placeholder="SC" /></label>
+        <label>Sigla / Prefixo do processo<input id="projectSigla" placeholder="Ex.: GTB01" /></label>
         <label>Status<select id="projectActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+        <p class="muted small-note span-two">Use o prefixo que aparece no Código do Processo dessa planilha (parte antes do "_", ex.: GTB01 em GTB01_0386). A importação usa esse prefixo para preencher município e estado automaticamente.</p>
+        <label class="span-two">Comerciais responsáveis<select id="projectComerciais" multiple size="4"></select><small class="field-help">Clientes deste núcleo aparecem no Funil comercial de cada Comercial selecionado aqui. Só o Admin ou quem criou o projeto pode alterar.</small></label>
         <label class="span-two">Observações<textarea id="projectNotes"></textarea></label>
       </div>
       <div class="dialog-actions">
@@ -655,6 +680,46 @@
       <div id="marketingJourneyProgress" class="marketing-journey-progress"></div>
       <div id="marketingJourneyPhases" class="marketing-journey-phases"></div>
     </div>
+  </dialog>
+
+  <dialog id="changePasswordDialog" class="dialog medium-dialog">
+    <form id="changePasswordForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Minha conta</p><h2>Alterar senha</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="changePasswordDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-two">Nova senha<input id="changePasswordNew" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <label class="span-two">Confirmar nova senha<input id="changePasswordConfirm" type="password" minlength="8" required autocomplete="new-password" /></label>
+      </div>
+      <p id="changePasswordMessage" class="form-message"></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="changePasswordDialog">Cancelar</button>
+        <button class="primary" type="submit">Salvar nova senha</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="resetPasswordDialog" class="dialog medium-dialog">
+    <form id="resetPasswordForm" class="dialog-body">
+      <div class="dialog-head">
+        <div><p class="eyebrow">Equipe</p><h2>Redefinir senha</h2></div>
+        <button type="button" class="icon-button" data-close-dialog="resetPasswordDialog">×</button>
+      </div>
+      <input type="hidden" id="resetPasswordUserId" />
+      <p class="muted">Usuário: <strong id="resetPasswordUserLabel">-</strong></p>
+      <div class="form-grid two">
+        <label class="span-two">Nova senha<input id="resetPasswordNew" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <label class="span-two">Confirmar nova senha<input id="resetPasswordConfirm" type="password" minlength="8" required autocomplete="new-password" /></label>
+      </div>
+      <p id="resetPasswordMessage" class="form-message"></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close-dialog="resetPasswordDialog">Cancelar</button>
+        <button class="primary" type="submit">Redefinir senha</button>
+      </div>
+    </form>
   </dialog>
 
   <div id="toast" class="toast hidden"></div>

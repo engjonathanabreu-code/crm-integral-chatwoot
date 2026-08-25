@@ -376,6 +376,23 @@ function applyRoleUI() {
   document.querySelectorAll(".marketing-only").forEach((element) => element.classList.toggle("hidden", !isMarketingTeam()));
 }
 
+
+async function fetchAllClientsPaged() {
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: rows, error: null };
+}
+
 async function loadData() {
   setSync("loading", "Atualizando...");
   try {
@@ -389,7 +406,7 @@ async function loadData() {
 
     const [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, interactionsResult, etapasResult, projectsResult, progressResult] = await Promise.all([
       supabase.from("profiles").select("id,nome,apelido,perfil,ativo,created_at").order("apelido", { ascending: true, nullsFirst: false }).order("nome"),
-      supabase.from("clientes").select("*").order("created_at", { ascending: false }),
+      fetchAllClientsPaged(),
       supabase.from("atendimentos").select("*").order("created_at", { ascending: false }),
       supabase.from("tarefas").select("*").order("data", { ascending: true }),
       supabase.from("historico").select("*").order("created_at", { ascending: false }),
