@@ -1,0 +1,183 @@
+name: Editar andamentos no codigo fonte
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/edit-progress-source.yml
+permissions:
+  contents: write
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Alterar codigo fonte
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('CRM-Integral-IA-Andamentos-Importacao-Excel/app.js')
+          s=p.read_text()
+
+          s=s.replace('progressDrill: { municipio: null, projetoId: null },\n  currentView:', 'progressDrill: { municipio: null, projetoId: null },\n  editingProgressId: null,\n  currentView:')
+
+          old='''function openProgressDialog(projectId = "") {
+  if (!state.projectSchemaReady) return showToast("Primeiro aplique a migração de Andamentos no Supabase.", "error");
+  $("progressForm").reset();
+  $("progressDate").value = today();
+  if ($("progressOperationalStatus")) $("progressOperationalStatus").value = "Em andamento";
+  if ($("progressForecast")) $("progressForecast").value = "";
+  if ($("progressAiGuidance")) $("progressAiGuidance").value = "";
+  $("progressVisibleAi").checked = true;
+  $("progressProject").value = projectId;
+  $("progressDialog").showModal();
+}
+
+async function saveProjectProgress(event) {
+  event.preventDefault();
+  const projetoId = $("progressProject").value;
+  const payload = {
+    projeto_id: projetoId,
+    status: $("progressStatus").value,
+    descricao_cliente: $("progressPublicText").value.trim(),
+    status_operacional: $("progressOperationalStatus")?.value || "Em andamento",
+    previsao: $("progressForecast")?.value || null,
+    orientacao_ia: $("progressAiGuidance")?.value.trim() || null,
+    observacao_interna: $("progressInternalText").value.trim() || null,
+    visivel_ia: $("progressVisibleAi").checked,
+    data_atualizacao: $("progressDate").value,
+    created_by: state.user.id,
+  };
+  const { error } = await supabase.from("andamentos").insert(payload);
+  if (error) return showToast(friendlyErrorMessage(error), "error");
+  $("progressDialog").close();
+  const project = projectById(projetoId);
+  if (project) {
+    state.progressDrill.municipio = municipioKeyOf(project);
+    state.progressDrill.projetoId = project.id;
+  }
+  await loadData();
+  setView("andamentos");
+  showToast("Andamento registrado para todo o Projeto/Núcleo.");
+}'''
+          new='''function openProgressDialog(projectId = "", progressItem = null) {
+  if (!state.projectSchemaReady) return showToast("Primeiro aplique a migração de Andamentos no Supabase.", "error");
+  $("progressForm").reset();
+  state.editingProgressId = progressItem?.id || null;
+  $("progressDate").value = progressItem?.data_atualizacao || today();
+  if ($("progressOperationalStatus")) $("progressOperationalStatus").value = progressItem?.status_operacional || "Em andamento";
+  if ($("progressForecast")) $("progressForecast").value = progressItem?.previsao || "";
+  if ($("progressAiGuidance")) $("progressAiGuidance").value = progressItem?.orientacao_ia || "";
+  $("progressVisibleAi").checked = progressItem ? progressItem.visivel_ia !== false : true;
+  $("progressProject").value = progressItem?.projeto_id || projectId;
+  $("progressProject").disabled = !!progressItem;
+  $("progressStatus").value = progressItem?.status || "Topografia";
+  $("progressPublicText").value = progressItem?.descricao_cliente || "";
+  $("progressInternalText").value = progressItem?.observacao_interna || "";
+  const title = $("progressDialog").querySelector(".dialog-head h2");
+  if (title) title.textContent = progressItem ? "Editar andamento" : "Novo andamento";
+  const submit = $("progressForm").querySelector('button[type="submit"]');
+  if (submit) submit.textContent = progressItem ? "Salvar alterações" : "Registrar andamento";
+  $("progressDialog").showModal();
+}
+
+async function saveProjectProgress(event) {
+  event.preventDefault();
+  const editingId = state.editingProgressId;
+  const existing = editingId ? state.projectProgress.find((row) => row.id === editingId) : null;
+  const projetoId = existing?.projeto_id || $("progressProject").value;
+  const payload = {
+    projeto_id: projetoId,
+    status: $("progressStatus").value,
+    descricao_cliente: $("progressPublicText").value.trim(),
+    status_operacional: $("progressOperationalStatus")?.value || "Em andamento",
+    previsao: $("progressForecast")?.value || null,
+    orientacao_ia: $("progressAiGuidance")?.value.trim() || null,
+    observacao_interna: $("progressInternalText").value.trim() || null,
+    visivel_ia: $("progressVisibleAi").checked,
+    data_atualizacao: $("progressDate").value,
+  };
+
+  let result;
+  if (existing) {
+    result = await supabase.from("andamentos").update(payload).eq("id", existing.id);
+  } else {
+    result = await supabase.from("andamentos").insert({ ...payload, created_by: state.user.id });
+  }
+  if (result.error) return showToast(friendlyErrorMessage(result.error), "error");
+
+  $("progressProject").disabled = false;
+  $("progressDialog").close();
+  state.editingProgressId = null;
+  const project = projectById(projetoId);
+  if (project) {
+    state.progressDrill.municipio = municipioKeyOf(project);
+    state.progressDrill.projetoId = project.id;
+  }
+  await loadData();
+  setView("andamentos");
+  showToast(existing ? "Andamento atualizado." : "Andamento registrado para todo o Projeto/Núcleo.");
+}'''
+          assert old in s, 'bloco open/save andamento nao encontrado'
+          s=s.replace(old,new)
+
+          old_actions='''<div class="timeline-actions">
+              <button class="danger-text-button" type="button"
+                data-delete-progress="${item.id}"
+                data-delete-progress-project="${project.id}">
+                Excluir andamento
+              </button>
+            </div>'''
+          new_actions='''<div class="timeline-actions">
+              <button class="secondary small-button" type="button"
+                data-edit-progress="${item.id}">
+                Editar andamento
+              </button>
+              <button class="danger-text-button" type="button"
+                data-delete-progress="${item.id}"
+                data-delete-progress-project="${project.id}">
+                Excluir andamento
+              </button>
+            </div>'''
+          assert old_actions in s, 'acoes do andamento nao encontradas'
+          s=s.replace(old_actions,new_actions)
+
+          anchor='''    const deleteProgressButton = event.target.closest("[data-delete-progress]");
+    if (deleteProgressButton) {
+      await deleteProjectProgress(
+        deleteProgressButton.dataset.deleteProgress,
+        deleteProgressButton.dataset.deleteProgressProject
+      );
+    }
+'''
+          replacement='''    const editProgressButton = event.target.closest("[data-edit-progress]");
+    if (editProgressButton) {
+      const item = state.projectProgress.find((row) => row.id === editProgressButton.dataset.editProgress);
+      if (item) openProgressDialog(item.projeto_id, item);
+    }
+
+'''+anchor
+          assert anchor in s, 'listener de exclusao nao encontrado'
+          s=s.replace(anchor,replacement)
+
+          # Ao fechar/cancelar, reabilita o seletor de projeto para o próximo cadastro.
+          s=s.replace('document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => $(button.dataset.closeDialog).close()));', 'document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => {\n    if (button.dataset.closeDialog === "progressDialog") { state.editingProgressId = null; $("progressProject").disabled = false; }\n    $(button.dataset.closeDialog).close();\n  }));')
+
+          p.write_text(s)
+          PY
+          cd CRM-Integral-IA-Andamentos-Importacao-Excel
+          node --check app.js
+          npm run build
+          cd ../..
+      - name: Commit definitivo
+        run: |
+          rm -f .github/workflows/edit-progress-source.yml
+          git config user.name "Integral CRM Refactor"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js .github/workflows/edit-progress-source.yml
+          git commit -m "feat: permite editar andamentos no codigo principal"
+          git push
