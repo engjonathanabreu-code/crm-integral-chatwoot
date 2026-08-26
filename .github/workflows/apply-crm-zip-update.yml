@@ -1,0 +1,73 @@
+name: Apply CRM ZIP update
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-crm-zip-update.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decode uploaded package
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            cat .crm-update/chunk00.txt
+            cat .crm-update/chunk01.txt
+            cat .crm-update/chunk02.txt
+            head -c 16000 .crm-update/chunk03.txt
+            cat .crm-update/chunk04.txt
+            cat .crm-update/chunk05.txt
+            cat .crm-update/chunk06.txt
+            head -c 16000 .crm-update/chunk07.txt
+            cat .crm-update/chunk08.txt
+          } > /tmp/payload.b64
+          test "$(wc -c < /tmp/payload.b64)" -eq 131468
+          base64 -d /tmp/payload.b64 > /tmp/update.tar.gz
+          mkdir -p /tmp/update
+          tar -xzf /tmp/update.tar.gz -C /tmp/update
+      - name: Replace exact CRM files
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="CRM-Integral-IA-Andamentos-Importacao-Excel"
+          cp /tmp/update/app.js "$BASE/app.js"
+          cp /tmp/update/index.html "$BASE/index.html"
+          cp /tmp/update/style.css "$BASE/style.css"
+          cp /tmp/update/dist/app.js "$BASE/dist/app.js"
+          cp /tmp/update/dist/index.html "$BASE/dist/index.html"
+          cp /tmp/update/dist/style.css "$BASE/dist/style.css"
+          mkdir -p "$BASE/supabase/migrations"
+          cp /tmp/update/supabase/migrations/20260826171443_cria_gestao_pos_protocolo.sql "$BASE/supabase/migrations/20260826171443_cria_gestao_pos_protocolo.sql"
+      - name: Validate exact uploaded content
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="CRM-Integral-IA-Andamentos-Importacao-Excel"
+          echo "43683caa47ff9e3a01e716dfcd926acd5ee56a5cdfc6f92cb4d2a0a2bf989660  $BASE/app.js" | sha256sum -c -
+          echo "43683caa47ff9e3a01e716dfcd926acd5ee56a5cdfc6f92cb4d2a0a2bf989660  $BASE/dist/app.js" | sha256sum -c -
+          echo "3de6e466ce878f2b51d64ce32733788b816dbbdba526cc14ee9814f7b64c3c3a  $BASE/index.html" | sha256sum -c -
+          echo "3de6e466ce878f2b51d64ce32733788b816dbbdba526cc14ee9814f7b64c3c3a  $BASE/dist/index.html" | sha256sum -c -
+          echo "cb287b008ef3e5c40363b7eac00bc5f168c8efa436f38a8bed0bc46d40e87d17  $BASE/style.css" | sha256sum -c -
+          echo "cb287b008ef3e5c40363b7eac00bc5f168c8efa436f38a8bed0bc46d40e87d17  $BASE/dist/style.css" | sha256sum -c -
+          echo "cfc9d7449d3d5b3aae56a5085b75e80101d865c121b334e62edb19a54ff03b57  $BASE/supabase/migrations/20260826171443_cria_gestao_pos_protocolo.sql" | sha256sum -c -
+          node --check "$BASE/app.js"
+          node --check "$BASE/dist/app.js"
+      - name: Commit canonical update and cleanup staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="CRM-Integral-IA-Andamentos-Importacao-Excel"
+          rm -rf .crm-update
+          rm -f .github/workflows/apply-crm-zip-update.yml
+          git config user.name "Integral CRM Update"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: aplica gestao pos-protocolo do pacote enviado"
+          git push
