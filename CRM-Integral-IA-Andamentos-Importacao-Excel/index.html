@@ -299,7 +299,10 @@
               </label>
               <label>E-mail<input id="newUserEmail" type="email" required placeholder="nome@empresa.com.br" /></label>
               <label>Senha inicial<input id="newUserPassword" type="password" minlength="8" required /></label>
-              <label>Perfil
+              <label>Setor
+                <select id="newUserSector"><option>Atendimento</option><option>Administrativo</option><option>Comercial</option><option>Financeiro</option><option>Projetos</option><option>Topografia</option><option>Marketing</option><option>Pós-Protocolo</option></select>
+              </label>
+              <label>Função / permissão
                 <select id="newUserRole"><option value="usuario">Usuário comum</option><option value="marketing">Marketing</option><option value="comercial">Comercial</option><option value="admin">Administrador</option></select>
               </label>
               <button class="primary" type="submit">Criar usuário</button>
@@ -312,18 +315,11 @@
               <div>
                 <p class="eyebrow">Permissões</p>
                 <h2>Usuários cadastrados</h2>
-                <p class="muted">Altere apelido, perfil e status diretamente na lista.</p>
+                <p class="muted">Clique em um usuário para editar dados, acesso, setor, função e senha.</p>
               </div>
               <div class="users-count-card"><strong id="usersCount">0</strong><span>usuários</span></div>
             </div>
-            <div class="users-list-head">
-              <span>Usuário</span>
-              <span>Nome completo</span>
-              <span>Perfil</span>
-              <span>Status</span>
-              <span>Senha</span>
-            </div>
-            <div id="usersList" class="users-table-list"></div>
+            <div id="usersList" class="user-card-grid"></div>
           </article>
         </div>
       </section>
@@ -704,20 +700,38 @@
   <dialog id="resetPasswordDialog" class="dialog medium-dialog">
     <form id="resetPasswordForm" class="dialog-body">
       <div class="dialog-head">
-        <div><p class="eyebrow">Equipe</p><h2>Redefinir senha</h2></div>
+        <div>
+          <p class="eyebrow">Equipe e acessos</p>
+          <h2 id="resetPasswordDialogTitle">Editar usuário</h2>
+          <p id="resetPasswordDialogSubtitle" class="muted"></p>
+        </div>
         <button type="button" class="icon-button" data-close-dialog="resetPasswordDialog">×</button>
       </div>
       <input type="hidden" id="resetPasswordUserId" />
-      <p class="muted">Usuário: <strong id="resetPasswordUserLabel">-</strong></p>
       <div class="form-grid two">
-        <label class="span-two">Nova senha<input id="resetPasswordNew" type="password" minlength="8" required autocomplete="new-password" /></label>
-        <label class="span-two">Confirmar nova senha<input id="resetPasswordConfirm" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <label class="span-two">Nome completo<input id="resetPasswordName" required maxlength="120" /></label>
+        <label>Nome de usuário<input id="resetPasswordNickname" required maxlength="30" autocomplete="off" /></label>
+        <label>E-mail de acesso<input id="resetPasswordEmail" type="email" required /></label>
+        <label>Setor<select id="resetPasswordSector"></select></label>
+        <label>Função / permissão
+          <select id="resetPasswordRole"><option value="usuario">Usuário</option><option value="comercial">Comercial</option><option value="marketing">Marketing</option><option value="admin">Administrador</option></select>
+        </label>
+        <label>Status<select id="resetPasswordActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+        <div></div>
+        <div class="user-password-section span-two">
+          <strong>Alterar senha</strong>
+          <p class="muted">Deixe os campos vazios para manter a senha atual.</p>
+          <div class="form-grid two user-password-grid">
+            <label>Nova senha<input id="resetPasswordNew" type="password" minlength="8" autocomplete="new-password" /></label>
+            <label>Confirmar nova senha<input id="resetPasswordConfirm" type="password" minlength="8" autocomplete="new-password" /></label>
+          </div>
+        </div>
       </div>
       <p id="resetPasswordMessage" class="form-message"></p>
       <div class="dialog-actions">
         <div class="spacer"></div>
         <button type="button" class="secondary" data-close-dialog="resetPasswordDialog">Cancelar</button>
-        <button class="primary" type="submit">Redefinir senha</button>
+        <button class="primary" type="submit">Salvar alterações</button>
       </div>
     </form>
   </dialog>

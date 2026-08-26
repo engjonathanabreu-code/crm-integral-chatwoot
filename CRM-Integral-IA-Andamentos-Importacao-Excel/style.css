@@ -599,3 +599,77 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
 .import-table th, .import-table td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; }
 .import-table th { position: sticky; top: 0; background: var(--panel); z-index: 1; color: var(--muted); }
 @media (max-width: 900px) { .import-step-grid { grid-template-columns: 1fr; } }
+
+
+/* ---------- usuários: cards no padrão do ERP ---------- */
+.user-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.user-admin-card {
+  width: 100%;
+  min-height: 154px;
+  padding: 18px 18px 16px;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  overflow: hidden;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.user-admin-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 95, 91, .32);
+  box-shadow: 0 14px 32px rgba(15, 95, 91, .14);
+}
+.user-admin-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+.user-admin-card-head > div { min-width: 0; flex: 1 1 auto; }
+.user-admin-card-head strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1.22;
+  color: #111;
+  overflow-wrap: anywhere;
+}
+.user-admin-card-head .muted {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-admin-card-meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf3f2;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.user-admin-card-meta span { min-width: 0; overflow-wrap: anywhere; }
+.user-admin-card-meta b { color: var(--text); }
+.user-password-section {
+  margin-top: 4px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.user-password-section > strong { display: block; }
+.user-password-section > p { margin: 3px 0 12px; }
+.user-password-grid { margin-top: 10px; }
+@media (max-width: 720px) {
+  .user-card-grid { grid-template-columns: 1fr; }
+  .user-admin-card { min-height: auto; }
+}

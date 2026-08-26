@@ -3,6 +3,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const CONFIG = window.CRM_CONFIG || {};
 const CLIENT_STATUSES = ["Novo", "Contato feito", "Proposta enviada", "Negociação", "Cliente Ativo", "Perdido"];
 const TICKET_SECTORS = ["Atendimento", "Comercial", "Financeiro", "Projetos", "Topografia", "Pós-Protocolo"];
+const USER_SECTORS = ["Administrativo", "Atendimento", "Comercial", "Financeiro", "Projetos", "Topografia", "Marketing", "Pós-Protocolo"];
 const TICKET_STATUSES = ["Aberto", "Em andamento", "Resolvido"];
 const MARKETING_FASE_COLORS = { 1: "var(--fase1)", 2: "var(--fase2)", 3: "var(--fase3)", 4: "var(--fase4)", 5: "var(--fase5)" };
 const PROGRESS_STATUSES = ["Topografia", "Projeto", "Protocolado", "Correções para Prefeitura", "Registro de Imóveis", "Concluído", "Outros"];
@@ -405,7 +406,7 @@ async function loadData() {
       : [Promise.resolve({ data: [] }), Promise.resolve({ data: [] }), Promise.resolve({ data: [] })];
 
     const [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, interactionsResult, etapasResult, projectsResult, progressResult] = await Promise.all([
-      supabase.from("profiles").select("id,nome,apelido,perfil,ativo,created_at").order("apelido", { ascending: true, nullsFirst: false }).order("nome"),
+      supabase.from("profiles").select("id,nome,apelido,email,setor,perfil,ativo,created_at").order("apelido", { ascending: true, nullsFirst: false }).order("nome"),
       fetchAllClientsPaged(),
       supabase.from("atendimentos").select("*").order("created_at", { ascending: false }),
       supabase.from("tarefas").select("*").order("data", { ascending: true }),
@@ -853,63 +854,23 @@ function renderUsers() {
   if (!isAdmin()) return;
 
   $("usersCount").textContent = state.profiles.length;
+  const roleLabels = { usuario: "Usuário", comercial: "Comercial", marketing: "Marketing", admin: "Administrador" };
 
-  $("usersList").innerHTML = state.profiles.length ? state.profiles.map((profile) => {
-    const nickname = profile.apelido || "";
-    const initials = (nickname || profile.nome || "U").slice(0, 2).toUpperCase();
-
-    return `<article class="user-table-row" data-user-row="${profile.id}">
-      <div class="user-identity-cell">
-        <span class="user-avatar">${escapeHtml(initials)}</span>
+  $("usersList").innerHTML = state.profiles.length ? state.profiles.map((profile) => `
+    <button type="button" class="user-admin-card" data-edit-user="${profile.id}">
+      <div class="user-admin-card-head">
         <div>
-          <input
-            class="user-nickname-input"
-            data-user-nickname="${profile.id}"
-            value="${escapeHtml(nickname)}"
-            placeholder="definir usuário"
-            maxlength="30"
-            aria-label="Nome de usuário"
-          />
-          <small>${nickname ? `@${escapeHtml(nickname)}` : "Sem nome de usuário"}</small>
+          <strong>${escapeHtml(profile.nome || profile.apelido || "Usuário")}</strong>
+          <span class="muted">${escapeHtml(profile.email || "E-mail não informado")}</span>
         </div>
+        <span class="badge ${profile.ativo ? "closed" : "lost"}">${profile.ativo ? "Ativo" : "Inativo"}</span>
       </div>
-
-      <div class="user-fullname-cell">
-        <input
-          class="user-fullname-input"
-          data-user-fullname="${profile.id}"
-          value="${escapeHtml(profile.nome || "")}"
-          placeholder="Nome completo"
-          maxlength="120"
-          aria-label="Nome completo"
-        />
-        <span>Criado em ${formatDate(profile.created_at)}</span>
+      <div class="user-admin-card-meta">
+        <span><b>Setor:</b> ${escapeHtml(profile.setor || "—")}</span>
+        <span><b>Função:</b> ${escapeHtml(roleLabels[profile.perfil] || "Usuário")}</span>
+        <span><b>Usuário:</b> ${profile.apelido ? `@${escapeHtml(profile.apelido)}` : "—"}</span>
       </div>
-
-      <label class="user-select-cell">
-        <span class="mobile-field-label">Perfil</span>
-        <select data-user-role="${profile.id}">
-          <option value="usuario" ${profile.perfil === "usuario" ? "selected" : ""}>Usuário</option>
-          <option value="marketing" ${profile.perfil === "marketing" ? "selected" : ""}>Marketing</option>
-          <option value="comercial" ${profile.perfil === "comercial" ? "selected" : ""}>Comercial</option>
-          <option value="admin" ${profile.perfil === "admin" ? "selected" : ""}>Administrador</option>
-        </select>
-      </label>
-
-      <label class="user-select-cell">
-        <span class="mobile-field-label">Status</span>
-        <select data-user-active="${profile.id}">
-          <option value="true" ${profile.ativo ? "selected" : ""}>Ativo</option>
-          <option value="false" ${!profile.ativo ? "selected" : ""}>Desativado</option>
-        </select>
-      </label>
-
-      <div class="user-action-cell">
-        <span class="mobile-field-label">Senha</span>
-        <button type="button" class="secondary small-button" data-reset-password="${profile.id}">Redefinir senha</button>
-      </div>
-    </article>`;
-  }).join("") : emptyState("Nenhum usuário encontrado.");
+    </button>`).join("") : emptyState("Nenhum usuário encontrado.");
 }
 
 function marketingProgressFor(projectId) {
@@ -2291,6 +2252,7 @@ async function createUser(event) {
       email: $("newUserEmail").value.trim(),
       password: $("newUserPassword").value,
       perfil: $("newUserRole").value,
+      setor: $("newUserSector")?.value || null,
     },
   });
 
@@ -2348,7 +2310,14 @@ function openResetPasswordDialog(profile) {
   if (!profile) return;
   $("resetPasswordForm").reset();
   $("resetPasswordUserId").value = profile.id;
-  $("resetPasswordUserLabel").textContent = `${profile.nome || "Usuário"}${profile.apelido ? ` (@${profile.apelido})` : ""}`;
+  $("resetPasswordName").value = profile.nome || "";
+  $("resetPasswordNickname").value = profile.apelido || "";
+  $("resetPasswordEmail").value = profile.email || "";
+  $("resetPasswordSector").innerHTML = USER_SECTORS.map((sector) => `<option ${sector === (profile.setor || "Atendimento") ? "selected" : ""}>${escapeHtml(sector)}</option>`).join("");
+  $("resetPasswordRole").value = profile.perfil || "usuario";
+  $("resetPasswordActive").value = String(profile.ativo !== false);
+  $("resetPasswordDialogTitle").textContent = profile.nome || "Editar usuário";
+  $("resetPasswordDialogSubtitle").textContent = profile.email || (profile.apelido ? `@${profile.apelido}` : "Conta da equipe");
   $("resetPasswordMessage").className = "form-message";
   $("resetPasswordMessage").textContent = "";
   $("resetPasswordDialog").showModal();
@@ -2360,33 +2329,57 @@ async function submitResetPassword(event) {
   message.className = "form-message";
 
   const userId = $("resetPasswordUserId").value;
+  const current = state.profiles.find((profile) => profile.id === userId);
+  if (!current) return;
+
+  const nome = $("resetPasswordName").value.trim();
+  const apelido = normalizeNickname($("resetPasswordNickname").value);
+  const email = $("resetPasswordEmail").value.trim().toLowerCase();
+  const setor = $("resetPasswordSector").value;
+  const perfil = $("resetPasswordRole").value;
+  const ativo = $("resetPasswordActive").value === "true";
   const pass1 = $("resetPasswordNew").value;
   const pass2 = $("resetPasswordConfirm").value;
 
-  if (pass1.length < 8) {
-    message.textContent = "A senha deve ter pelo menos 8 caracteres.";
-    return;
+  if (!nome) return void (message.textContent = "O nome completo é obrigatório.");
+  if (!isValidNickname(apelido)) return void (message.textContent = "Nome de usuário inválido. Use 3 a 30 caracteres: letras, números, ponto, hífen ou _.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return void (message.textContent = "Informe um e-mail válido.");
+  if (pass1 && pass1.length < 8) return void (message.textContent = "A nova senha deve ter pelo menos 8 caracteres.");
+  if (pass1 !== pass2) return void (message.textContent = "As senhas não coincidem.");
+  if (userId === state.user.id && !ativo) return void (message.textContent = "Você não pode desativar seu próprio usuário.");
+
+  message.textContent = "Salvando alterações...";
+
+  const emailChanged = email !== String(current.email || "").toLowerCase();
+  if (emailChanged || pass1) {
+    const credentials = { user_id: userId };
+    if (emailChanged) credentials.email = email;
+    if (pass1) credentials.password = pass1;
+    const { data, error } = await supabase.functions.invoke("admin-reset-password", { body: credentials });
+    if (error || data?.error) {
+      message.textContent = data?.error || error?.message || "Não foi possível alterar as credenciais.";
+      return;
+    }
   }
-  if (pass1 !== pass2) {
-    message.textContent = "As senhas não coincidem.";
-    return;
-  }
 
-  message.textContent = "Salvando...";
-
-  const { data, error } = await supabase.functions.invoke("admin-reset-password", {
-    body: { user_id: userId, password: pass1 },
-  });
-
-  if (error || data?.error) {
-    message.textContent = data?.error || error?.message || "Não foi possível redefinir a senha. Confirme se a Edge Function foi publicada.";
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ nome, apelido, setor, perfil, ativo })
+    .eq("id", userId);
+  if (profileError) {
+    message.textContent = friendlyErrorMessage(profileError);
     return;
   }
 
   message.className = "form-message success";
-  message.textContent = "Senha redefinida com sucesso.";
-  showToast("Senha do usuário redefinida.");
-  setTimeout(() => $("resetPasswordDialog").close(), 900);
+  message.textContent = "Alterações salvas com sucesso.";
+  const changedOwnRole = userId === state.user.id && perfil !== current.perfil;
+  await loadData();
+  showToast("Usuário atualizado sem alterar o histórico.");
+  setTimeout(() => {
+    $("resetPasswordDialog").close();
+    if (changedOwnRole) window.location.reload();
+  }, 700);
 }
 
 async function updateUserProfile(id, patch) {
@@ -2586,42 +2579,13 @@ function bindEvents() {
     const marketingEtapaButton = event.target.closest("[data-toggle-marketing-etapa]");
     if (marketingEtapaButton && marketingEtapaButton.dataset.toggleMarketingEtapa) toggleMarketingEtapa(marketingEtapaButton.dataset.toggleMarketingEtapa);
 
-    const resetPasswordButton = event.target.closest("[data-reset-password]");
-    if (resetPasswordButton) {
-      const profile = state.profiles.find((item) => item.id === resetPasswordButton.dataset.resetPassword);
+    const editUserButton = event.target.closest("[data-edit-user]");
+    if (editUserButton) {
+      const profile = state.profiles.find((item) => item.id === editUserButton.dataset.editUser);
       openResetPasswordDialog(profile);
     }
   });
 
-  document.addEventListener("change", (event) => {
-    const fullnameInput = event.target.closest("[data-user-fullname]");
-    if (fullnameInput) {
-      const nome = fullnameInput.value.trim();
-      if (!nome) {
-        showToast("O nome completo não pode ficar em branco.", "error");
-        renderUsers();
-      } else {
-        updateUserProfile(fullnameInput.dataset.userFullname, { nome });
-      }
-    }
-
-    const nicknameInput = event.target.closest("[data-user-nickname]");
-    if (nicknameInput) {
-      const apelido = normalizeNickname(nicknameInput.value);
-      if (!isValidNickname(apelido)) {
-        showToast("Nome de usuário inválido. Use 3 a 30 caracteres: letras, números, ponto, hífen ou _.", "error");
-        renderUsers();
-      } else {
-        updateUserProfile(nicknameInput.dataset.userNickname, { apelido });
-      }
-    }
-
-    const roleSelect = event.target.closest("[data-user-role]");
-    if (roleSelect) updateUserProfile(roleSelect.dataset.userRole, { perfil: roleSelect.value });
-
-    const activeSelect = event.target.closest("[data-user-active]");
-    if (activeSelect) updateUserProfile(activeSelect.dataset.userActive, { ativo: activeSelect.value === "true" });
-  });
 }
 
 bootstrap().catch((error) => {
