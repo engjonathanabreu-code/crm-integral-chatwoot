@@ -29,19 +29,24 @@ Deno.serve(async (req) => {
       .single();
 
     if (!requester?.ativo || requester.perfil !== "admin") {
-      return new Response(JSON.stringify({ error: "Somente administradores podem redefinir senhas." }), {
+      return new Response(JSON.stringify({ error: "Somente administradores podem alterar credenciais de usuários." }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { user_id, password } = await req.json();
+    const { user_id, password, email } = await req.json();
+    if (!user_id) throw new Error("Usuário é obrigatório.");
 
-    if (!user_id || !password) {
-      throw new Error("Usuário e nova senha são obrigatórios.");
-    }
-    if (String(password).length < 8) {
+    const normalizedEmail = email == null ? null : String(email).trim().toLowerCase();
+    if (password != null && String(password).length < 8) {
       throw new Error("A senha deve ter pelo menos 8 caracteres.");
+    }
+    if (normalizedEmail != null && !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      throw new Error("Informe um e-mail válido.");
+    }
+    if (!password && !normalizedEmail) {
+      throw new Error("Informe um novo e-mail ou uma nova senha.");
     }
 
     const { data: targetProfile } = await adminClient
@@ -49,18 +54,32 @@ Deno.serve(async (req) => {
       .select("id")
       .eq("id", user_id)
       .maybeSingle();
-
     if (!targetProfile) throw new Error("Usuário não encontrado.");
 
-    const { error } = await adminClient.auth.admin.updateUserById(user_id, { password });
-    if (error) throw error;
+    const authChanges: Record<string, unknown> = {};
+    if (password) authChanges.password = String(password);
+    if (normalizedEmail) {
+      authChanges.email = normalizedEmail;
+      authChanges.email_confirm = true;
+    }
 
-    return new Response(JSON.stringify({ ok: true }), {
+    const { error: authError } = await adminClient.auth.admin.updateUserById(user_id, authChanges);
+    if (authError) throw authError;
+
+    if (normalizedEmail) {
+      const { error: profileError } = await adminClient
+        .from("profiles")
+        .update({ email: normalizedEmail })
+        .eq("id", user_id);
+      if (profileError) throw profileError;
+    }
+
+    return new Response(JSON.stringify({ ok: true, user_id, email: normalizedEmail || undefined }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || "Erro interno." }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro interno." }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
