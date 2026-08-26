@@ -25,7 +25,9 @@ jobs:
           node-version: '22'
 
       - name: Aplicar refatoracao
-        run: python3 CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/refactor_users.py
+        run: |
+          python3 CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/fix_refactor.py
+          python3 CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/refactor_users.py
 
       - name: Validar build e sintaxe
         run: |
@@ -35,6 +37,8 @@ jobs:
           grep -q 'data-edit-user' app.js
           grep -q 'resetPasswordEmail' index.html
           test ! -e users-admin.js
+          test ! -e scripts/refactor_users.py
+          test ! -e scripts/fix_refactor.py
           cd ..
           test ! -e .github/workflows/refactor-users-direct.yml
 
