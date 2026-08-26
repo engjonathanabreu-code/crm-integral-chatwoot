@@ -26,6 +26,7 @@ const state = {
   projectSchemaReady: false,
   projectsDrill: { municipio: null, projetoId: null },
   progressDrill: { municipio: null, projetoId: null },
+  editingProgressId: null,
   currentView: "dashboard",
   selectedClientId: null,
   selectedMarketingProjectId: null,
@@ -1141,6 +1142,7 @@ function renderProjectProgress() {
               <p class="muted">${escapeHtml(item.observacao_interna)}</p>
             </details>` : ""}
             <div class="timeline-actions">
+              <button class="secondary small-button" type="button" data-edit-progress="${item.id}">Editar andamento</button>
               <button class="danger-text-button" type="button"
                 data-delete-progress="${item.id}"
                 data-delete-progress-project="${project.id}">
@@ -1340,21 +1342,32 @@ async function saveProject(event) {
   showToast(id ? "Projeto atualizado." : "Projeto criado.");
 }
 
-function openProgressDialog(projectId = "") {
+function openProgressDialog(projectId = "", progressItem = null) {
   if (!state.projectSchemaReady) return showToast("Primeiro aplique a migração de Andamentos no Supabase.", "error");
   $("progressForm").reset();
-  $("progressDate").value = today();
-  if ($("progressOperationalStatus")) $("progressOperationalStatus").value = "Em andamento";
-  if ($("progressForecast")) $("progressForecast").value = "";
-  if ($("progressAiGuidance")) $("progressAiGuidance").value = "";
-  $("progressVisibleAi").checked = true;
-  $("progressProject").value = projectId;
+  state.editingProgressId = progressItem?.id || null;
+  $("progressDate").value = progressItem?.data_atualizacao || today();
+  if ($("progressOperationalStatus")) $("progressOperationalStatus").value = progressItem?.status_operacional || "Em andamento";
+  if ($("progressForecast")) $("progressForecast").value = progressItem?.previsao || "";
+  if ($("progressAiGuidance")) $("progressAiGuidance").value = progressItem?.orientacao_ia || "";
+  $("progressVisibleAi").checked = progressItem ? progressItem.visivel_ia !== false : true;
+  $("progressProject").value = progressItem?.projeto_id || projectId;
+  $("progressProject").disabled = !!progressItem;
+  $("progressStatus").value = progressItem?.status || "Topografia";
+  $("progressPublicText").value = progressItem?.descricao_cliente || "";
+  $("progressInternalText").value = progressItem?.observacao_interna || "";
+  const title = $("progressDialog").querySelector(".dialog-head h2");
+  if (title) title.textContent = progressItem ? "Editar andamento" : "Novo andamento";
+  const submit = $("progressForm").querySelector('button[type="submit"]');
+  if (submit) submit.textContent = progressItem ? "Salvar alterações" : "Registrar andamento";
   $("progressDialog").showModal();
 }
 
 async function saveProjectProgress(event) {
   event.preventDefault();
-  const projetoId = $("progressProject").value;
+  const editingId = state.editingProgressId;
+  const existing = editingId ? state.projectProgress.find((row) => row.id === editingId) : null;
+  const projetoId = existing?.projeto_id || $("progressProject").value;
   const payload = {
     projeto_id: projetoId,
     status: $("progressStatus").value,
@@ -1365,11 +1378,16 @@ async function saveProjectProgress(event) {
     observacao_interna: $("progressInternalText").value.trim() || null,
     visivel_ia: $("progressVisibleAi").checked,
     data_atualizacao: $("progressDate").value,
-    created_by: state.user.id,
   };
-  const { error } = await supabase.from("andamentos").insert(payload);
-  if (error) return showToast(friendlyErrorMessage(error), "error");
+
+  let result;
+  if (existing) result = await supabase.from("andamentos").update(payload).eq("id", existing.id);
+  else result = await supabase.from("andamentos").insert({ ...payload, created_by: state.user.id });
+  if (result.error) return showToast(friendlyErrorMessage(result.error), "error");
+
+  $("progressProject").disabled = false;
   $("progressDialog").close();
+  state.editingProgressId = null;
   const project = projectById(projetoId);
   if (project) {
     state.progressDrill.municipio = municipioKeyOf(project);
@@ -1377,7 +1395,7 @@ async function saveProjectProgress(event) {
   }
   await loadData();
   setView("andamentos");
-  showToast("Andamento registrado para todo o Projeto/Núcleo.");
+  showToast(existing ? "Andamento atualizado." : "Andamento registrado para todo o Projeto/Núcleo.");
 }
 
 function applyProjectToClientForm() {
@@ -2476,7 +2494,13 @@ function bindEvents() {
     openEditClient(client);
   });
 
-  document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => $(button.dataset.closeDialog).close()));
+  document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.closeDialog === "progressDialog") {
+      state.editingProgressId = null;
+      $("progressProject").disabled = false;
+    }
+    $(button.dataset.closeDialog).close();
+  }));
   document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 
   ["clientSearch", "municipalityFilter", "nucleusFilter", "clientStatusFilter", "clientOwnerFilter"].forEach((id) => $(id).addEventListener(id === "clientSearch" ? "input" : "change", renderClients));
@@ -2520,6 +2544,12 @@ function bindEvents() {
 
     const newProjectProgressButton = event.target.closest("[data-new-progress-project]");
     if (newProjectProgressButton) openProgressDialog(newProjectProgressButton.dataset.newProgressProject);
+
+    const editProgressButton = event.target.closest("[data-edit-progress]");
+    if (editProgressButton) {
+      const item = state.projectProgress.find((row) => row.id === editProgressButton.dataset.editProgress);
+      if (item) openProgressDialog(item.projeto_id, item);
+    }
 
     const deleteProgressButton = event.target.closest("[data-delete-progress]");
     if (deleteProgressButton) {
