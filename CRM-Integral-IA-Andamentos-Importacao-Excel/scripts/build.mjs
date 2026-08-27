@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -9,9 +9,14 @@ const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KE
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
-for (const file of ["index.html", "style.css", "app.js"]) {
+for (const file of ["style.css", "app.js", "weekly.css", "weekly.js"]) {
   await cp(resolve(root, file), resolve(out, file));
 }
+
+let index = await readFile(resolve(root, "index.html"), "utf8");
+index = index.replace("</head>", '  <link rel="stylesheet" href="./weekly.css">\n</head>');
+index = index.replace("</body>", '  <script type="module" src="./weekly.js"></script>\n</body>');
+await writeFile(resolve(out, "index.html"), index, "utf8");
 
 const config = `window.CRM_CONFIG = ${JSON.stringify({
   supabaseUrl: url,
