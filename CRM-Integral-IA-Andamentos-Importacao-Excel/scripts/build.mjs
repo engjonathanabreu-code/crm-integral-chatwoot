@@ -48,7 +48,47 @@ if (!index.includes(importGridEnd)) {
 }
 index = index.replace(importGridEnd, `        </article>${importStatusCard}\n      </div>\n\n      <div id="clientImportSummary"`);
 index = index.replace("</head>", '  <link rel="stylesheet" href="./weekly.css">\n</head>');
-index = index.replace("</body>", '  <script type="module" src="./weekly.js"></script>\n  <script type="module" src="./weekly-approvals.js"></script>\n</body>');
+
+// Os módulos da Gestão Semanal criam clientes Supabase próprios. Quando eram
+// carregados em paralelo com app.js, podiam disputar a sessão persistida enquanto
+// o CRM principal ainda executava loadData(), deixando o Dashboard preso em
+// "Atualizando...". Agora eles só iniciam depois de o núcleo do CRM informar
+// "Sincronizado". Nenhum dado, tabela, permissão ou regra da Gestão Semanal é alterado.
+const weeklyLoader = `
+  <script type="module">
+    (() => {
+      let timer = null;
+      const loadWeeklyModules = async () => {
+        if (window.__crmWeeklyModulesLoaded) {
+          if (timer) clearInterval(timer);
+          return;
+        }
+
+        const shell = document.getElementById("appShell");
+        const sync = document.getElementById("syncStatus");
+        const coreReady = shell && !shell.classList.contains("hidden") && sync?.textContent?.trim() === "Sincronizado";
+        if (!coreReady) return;
+
+        window.__crmWeeklyModulesLoaded = true;
+        if (timer) clearInterval(timer);
+
+        try {
+          await import("./weekly.js");
+          await import("./weekly-approvals.js");
+        } catch (error) {
+          window.__crmWeeklyModulesLoaded = false;
+          console.error("Falha ao iniciar Gestão Semanal:", error);
+        }
+      };
+
+      window.addEventListener("load", () => {
+        loadWeeklyModules();
+        timer = setInterval(loadWeeklyModules, 500);
+      }, { once: true });
+    })();
+  </script>`;
+
+index = index.replace("</body>", `${weeklyLoader}\n</body>`);
 await writeFile(resolve(out, "index.html"), index, "utf8");
 
 const config = `window.CRM_CONFIG = ${JSON.stringify({
