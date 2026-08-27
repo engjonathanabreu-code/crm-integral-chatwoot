@@ -66,8 +66,6 @@ begin
 end;
 $$;
 
-grant execute on function public.solicitar_exclusao_gestao_semanal(uuid) to authenticated;
-
 create or replace function public.aprovar_exclusao_gestao_semanal(p_solicitacao_id uuid)
 returns void
 language plpgsql
@@ -127,8 +125,6 @@ begin
 end;
 $$;
 
-grant execute on function public.aprovar_exclusao_gestao_semanal(uuid) to authenticated;
-
 create or replace function public.recusar_exclusao_gestao_semanal(p_solicitacao_id uuid, p_motivo text default null)
 returns void
 language plpgsql
@@ -150,4 +146,10 @@ begin
 end;
 $$;
 
+revoke all on function public.solicitar_exclusao_gestao_semanal(uuid) from public, anon;
+revoke all on function public.aprovar_exclusao_gestao_semanal(uuid) from public, anon;
+revoke all on function public.recusar_exclusao_gestao_semanal(uuid, text) from public, anon;
+
+grant execute on function public.solicitar_exclusao_gestao_semanal(uuid) to authenticated;
+grant execute on function public.aprovar_exclusao_gestao_semanal(uuid) to authenticated;
 grant execute on function public.recusar_exclusao_gestao_semanal(uuid, text) to authenticated;
