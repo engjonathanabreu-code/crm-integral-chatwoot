@@ -23,6 +23,17 @@ if (!app.includes(importStatusSource)) {
   throw new Error("Não foi possível localizar o status padrão da importação em app.js.");
 }
 app = app.replace(importStatusSource, importStatusTarget);
+
+// O Funil Comercial deve exibir oportunidades com valor informado mesmo quando
+// ainda não há um Comercial atribuído. Isso evita esconder propostas reais como
+// Contato feito/Proposta enviada. Cadastros operacionais sem valor continuam fora
+// do funil enquanto não tiverem Comercial responsável.
+const pipelineRuleSource = '    return client.status !== "Cliente Ativo" && clientHasComercial(client) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner) && (!comercial || clientComercialIds(client).includes(comercial));';
+const pipelineRuleTarget = '    return client.status !== "Cliente Ativo" && (clientHasComercial(client) || Number(client.valor_estimado || 0) > 0) && (!search || haystack.includes(search)) && (!owner || client.owner_id === owner) && (!comercial || clientComercialIds(client).includes(comercial));';
+if (!app.includes(pipelineRuleSource)) {
+  throw new Error("Não foi possível localizar a regra do Funil Comercial em app.js.");
+}
+app = app.replace(pipelineRuleSource, pipelineRuleTarget);
 await writeFile(resolve(out, "app.js"), app, "utf8");
 
 let index = await readFile(resolve(root, "index.html"), "utf8");
