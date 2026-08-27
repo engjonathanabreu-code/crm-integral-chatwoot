@@ -9,7 +9,7 @@ const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KE
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
-for (const file of ["style.css", "app.js", "weekly.css", "weekly.js"]) {
+for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js"]) {
   await cp(resolve(root, file), resolve(out, file));
 }
 
@@ -48,7 +48,7 @@ if (!index.includes(importGridEnd)) {
 }
 index = index.replace(importGridEnd, `        </article>${importStatusCard}\n      </div>\n\n      <div id="clientImportSummary"`);
 index = index.replace("</head>", '  <link rel="stylesheet" href="./weekly.css">\n</head>');
-index = index.replace("</body>", '  <script type="module" src="./weekly.js"></script>\n</body>');
+index = index.replace("</body>", '  <script type="module" src="./weekly.js"></script>\n  <script type="module" src="./weekly-approvals.js"></script>\n</body>');
 await writeFile(resolve(out, "index.html"), index, "utf8");
 
 const config = `window.CRM_CONFIG = ${JSON.stringify({
