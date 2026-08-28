@@ -1,5 +1,5 @@
 name: Polish user edit action
-# trigger: 2026-08-28
+# trigger: 2026-08-28 16:47
 on:
   push:
     paths:
@@ -11,83 +11,62 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Refine user card action layout
+      - name: Move edit action below user metadata
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/style.css')
-          s = p.read_text()
-          marker = '/* Refinamento visual: ação Editar usuário padronizada */'
-          block = r'''
+          base = Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          app_path = base / 'app.js'
+          css_path = base / 'style.css'
+          app = app_path.read_text()
+          before = '''        <div class="user-card-head-actions">\n          <span class="badge ${profile.ativo ? "closed" : "lost"}">${profile.ativo ? "Ativo" : "Inativo"}</span>\n          <button type="button" class="secondary small-button" data-edit-user="${profile.id}">Editar usuário</button>\n        </div>'''
+          after = '''        <div class="user-card-head-actions">\n          <span class="badge ${profile.ativo ? "closed" : "lost"}">${profile.ativo ? "Ativo" : "Inativo"}</span>\n        </div>'''
+          if before not in app:
+              raise SystemExit('Bloco superior do botão Editar usuário não encontrado')
+          app = app.replace(before, after, 1)
+          anchor = '''        <span><b>Histórico:</b> ${activities.length} registro(s)</span>\n      </div>\n      <details class="user-activity-history">'''
+          replacement = '''        <span><b>Histórico:</b> ${activities.length} registro(s)</span>\n      </div>\n      <button type="button" class="secondary user-card-edit-action" data-edit-user="${profile.id}">Editar usuário</button>\n      <details class="user-activity-history">'''
+          if anchor not in app:
+              raise SystemExit('Ponto de inserção abaixo do Histórico não encontrado')
+          app = app.replace(anchor, replacement, 1)
+          app_path.write_text(app)
 
-/* Refinamento visual: ação Editar usuário padronizada */
-.user-admin-card-with-history{
+          css = css_path.read_text()
+          marker = '/* Editar usuário abaixo do histórico resumido */'
+          if marker not in css:
+              css += r'''
+
+/* Editar usuário abaixo do histórico resumido */
+.user-admin-card-with-history{min-height:260px;display:flex;flex-direction:column}
+.user-admin-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start}
+.user-card-head-actions{width:auto;display:flex;justify-content:flex-end;align-items:flex-start}
+.user-card-head-actions .badge{margin:0}
+.user-admin-card-meta{flex:0 0 auto;margin-top:14px}
+.user-card-edit-action{
+  width:100%;
+  min-height:34px;
+  margin:12px 0 0;
+  padding:7px 12px;
   display:flex;
-  flex-direction:column;
-  min-height:260px;
-}
-.user-admin-card-head{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 108px;
-  gap:14px;
-  align-items:start;
-}
-.user-admin-card-head>div:first-child{
-  min-width:0;
-}
-.user-card-head-actions{
-  width:108px;
-  display:grid;
-  grid-template-columns:1fr;
-  gap:8px;
-  justify-items:stretch;
-  align-content:start;
-  flex:0 0 108px;
-}
-.user-card-head-actions .badge{
-  justify-self:end;
-  min-width:0;
-}
-.user-card-head-actions [data-edit-user]{
-  width:108px;
-  min-width:108px;
-  height:34px;
-  padding:0 10px;
-  display:inline-flex;
   align-items:center;
   justify-content:center;
   white-space:nowrap;
-  line-height:1;
   border-radius:9px;
-  font-size:11.5px;
+  font-size:12px;
   font-weight:650;
 }
-.user-admin-card-meta{
-  flex:1 1 auto;
-}
-.user-activity-history{
-  margin-top:auto;
-}
-@media(max-width:760px){
-  .user-admin-card-head{grid-template-columns:minmax(0,1fr) 104px}
-  .user-card-head-actions,.user-card-head-actions [data-edit-user]{width:104px;min-width:104px}
-}
-@media(max-width:420px){
-  .user-admin-card-head{grid-template-columns:1fr}
-  .user-card-head-actions{width:100%;grid-template-columns:auto 1fr;align-items:center}
-  .user-card-head-actions .badge{justify-self:start}
-  .user-card-head-actions [data-edit-user]{width:100%;min-width:0}
-}
+.user-activity-history{margin-top:12px}
+@media(max-width:420px){.user-admin-card-head{grid-template-columns:minmax(0,1fr) auto}.user-card-edit-action{width:100%}}
 '''
-          if marker not in s:
-              s += block
-              p.write_text(s)
+              css_path.write_text(css)
           PY
+      - name: Validate JavaScript
+        run: node --check CRM-Integral-IA-Andamentos-Importacao-Excel/app.js
       - name: Commit styling
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "Integral Automation"
           git config user.email "actions@users.noreply.github.com"
-          git add CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
-          git commit -m "style: padronizar ação editar usuário nos cards"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "style: mover editar usuário abaixo do histórico"
           git push
