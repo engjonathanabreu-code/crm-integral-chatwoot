@@ -1,0 +1,60 @@
+name: Apply commercial assignment permission
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-commercial-assignment-permission.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allow Commercial users to assign Commercial
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          app = root / 'app.js'
+          index = root / 'index.html'
+
+          js = app.read_text()
+          old = '''// Só o Admin ou quem cadastrou o cliente (created_by) pode
+// atribuir/trocar o Comercial responsável.
+function canAssignComercial(existingClient) {
+  if (isAdmin()) return true;
+  if (!existingClient) return true; // cliente novo: quem está criando é o created_by
+  return existingClient.created_by === state.user.id;
+}'''
+          new = '''// Admin, usuários do Comercial ou quem cadastrou o cliente podem
+// atribuir/trocar o Comercial responsável. O seletor continua listando
+// somente usuários ativos com perfil Comercial.
+function canAssignComercial(existingClient) {
+  if (isAdmin()) return true;
+  if (state.profile?.perfil === "comercial" || state.profile?.setor === "Comercial") return true;
+  if (!existingClient) return true; // cliente novo: quem está criando é o created_by
+  return existingClient.created_by === state.user.id;
+}'''
+          if old not in js:
+            raise SystemExit('Bloco canAssignComercial esperado não encontrado')
+          js = js.replace(old, new, 1)
+          app.write_text(js)
+
+          html = index.read_text()
+          html = html.replace(
+            'Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.',
+            'Admin, usuários do Comercial ou quem cadastrou o cliente podem atribuir/trocar o Comercial.'
+          )
+          index.write_text(html)
+
+      - name: Commit changes
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/index.html
+          git commit -m "feat: permitir comercial atribuir responsável comercial" || exit 0
+          git push
