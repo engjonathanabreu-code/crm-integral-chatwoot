@@ -1,0 +1,49 @@
+name: Fix CRM white screen v2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-white-screen-history-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair malformed escaped source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          app_path=root/'app.js'; css_path=root/'style.css'
+          app=app_path.read_text()
+          start=app.find(r'\n\nfunction getUserOperationalHistory(userId) {')
+          if start == -1:
+              start=app.find(r'function getUserOperationalHistory(userId) {')
+          if start != -1:
+              end=app.find('function renderUsers()', start)
+              if end == -1:
+                  raise SystemExit('renderUsers marker not found')
+              block=app[start:end]
+              block=block.replace(r'\n','\n')
+              app=app[:start]+block+app[end:]
+          app_path.write_text(app)
+
+          css=css_path.read_text()
+          cstart=css.find(r'\n\n/* Histórico operacional explícito no editor de usuário */')
+          if cstart != -1:
+              css=css[:cstart]+css[cstart:].replace(r'\n','\n')
+          css_path.write_text(css)
+          PY
+      - name: Validate JS
+        run: node --check CRM-Integral-IA-Andamentos-Importacao-Excel/app.js
+      - name: Commit repair
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "fix: restaurar carregamento do CRM" || exit 0
+          git push
