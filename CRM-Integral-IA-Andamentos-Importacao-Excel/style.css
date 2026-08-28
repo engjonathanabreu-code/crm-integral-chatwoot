@@ -691,3 +691,46 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
 .user-activity-item time{white-space:nowrap}
 .record-actions .danger{white-space:nowrap}
 @media(max-width:760px){.user-activity-item{grid-template-columns:1fr}.user-card-head-actions{justify-content:flex-start}}
+
+
+/* CRM: cards de usuário clicáveis e linhas operacionais alinhadas */
+.user-admin-card[data-user-card]{cursor:pointer;transition:border-color .16s ease,box-shadow .16s ease}
+.user-admin-card[data-user-card]:hover{box-shadow:0 5px 18px rgba(15,23,42,.06)}
+.user-admin-card[data-user-card]:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+#ticketsList .record-row,
+#tasksList .record-row{
+  display:grid;
+  grid-template-columns:minmax(280px,2.15fr) minmax(120px,.72fr) minmax(170px,1fr) minmax(240px,1.45fr) minmax(250px,1.22fr);
+  gap:18px;
+  align-items:center;
+  width:100%;
+}
+#ticketsList .record-row>div,
+#tasksList .record-row>div{min-width:0;max-width:100%}
+#ticketsList .record-row h4,#ticketsList .record-row p,#ticketsList .record-row span,
+#tasksList .record-row h4,#tasksList .record-row p,#tasksList .record-row span{overflow-wrap:anywhere}
+#ticketsList .record-actions,
+#tasksList .record-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  width:100%;
+  align-items:stretch;
+}
+#ticketsList .record-actions .small-button,
+#tasksList .record-actions .small-button{
+  width:100%;min-width:0;height:34px;padding:0 9px;display:flex;align-items:center;justify-content:center;white-space:nowrap
+}
+@media(max-width:1180px){
+  #ticketsList .record-row,#tasksList .record-row{grid-template-columns:minmax(230px,1.8fr) minmax(110px,.7fr) minmax(150px,.9fr) minmax(210px,1.2fr) minmax(220px,1fr);gap:12px}
+  #ticketsList .record-actions,#tasksList .record-actions{grid-template-columns:1fr}
+}
+@media(max-width:860px){
+  #ticketsList .record-row,#tasksList .record-row{grid-template-columns:1fr 1fr;align-items:start}
+  #ticketsList .record-actions,#tasksList .record-actions{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  #ticketsList .record-row,#tasksList .record-row{grid-template-columns:1fr}
+  #ticketsList .record-actions,#tasksList .record-actions{grid-column:auto;grid-template-columns:1fr}
+}

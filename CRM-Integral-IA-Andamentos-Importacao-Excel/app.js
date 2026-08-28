@@ -908,7 +908,7 @@ function renderUsers() {
 
   $("usersList").innerHTML = state.profiles.length ? state.profiles.map((profile) => {
     const activities = historyFor(profile);
-    return `<article class="user-admin-card user-admin-card-with-history">
+    return `<article class="user-admin-card user-admin-card-with-history" data-user-card="${profile.id}" tabindex="0" role="button">
       <div class="user-admin-card-head">
         <div>
           <strong>${escapeHtml(profile.nome || profile.apelido || "Usuário")}</strong>
@@ -2732,4 +2732,21 @@ bootstrap().catch((error) => {
   console.error(error);
   showOnly("loginScreen");
   $("loginMessage").textContent = `Erro ao iniciar: ${error.message}`;
+});
+
+
+// Card de usuário clicável: reutiliza o botão Editar usuário sem interferir no histórico.
+document.addEventListener("click", (event) => {
+  const card = event.target.closest(".user-admin-card[data-user-card]");
+  if (!card) return;
+  if (event.target.closest("button, a, input, select, textarea, summary, details, label")) return;
+  card.querySelector("[data-edit-user]")?.click();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const card = event.target.closest(".user-admin-card[data-user-card]");
+  if (!card || event.target !== card) return;
+  event.preventDefault();
+  card.querySelector("[data-edit-user]")?.click();
 });
