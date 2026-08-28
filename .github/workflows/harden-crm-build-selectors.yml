@@ -1,0 +1,36 @@
+name: Harden CRM selector build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/harden-crm-build-selectors.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace fragile selector patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
+          s = p.read_text()
+          pattern = r'// Padroniza Dono do registro, Comercial e Agentes atribuídos como seletores compactos\.[\s\S]*?\nconst importStatusCard = `'
+          replacement = '''// Padroniza Dono do registro, Comercial e Agentes atribuídos sem depender\n// de um bloco HTML inteiro; assim pequenas mudanças de texto não quebram o build.\nindex = index.replace(\n  '<label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>',\n  '<label class="admin-only hidden client-assignment-field">Dono do registro<select id="clientOwner" class="client-mini-select"></select></label>'\n);\nindex = index.replace(\n  '<label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>',\n  '<label class="client-assignment-field">Comercial<select id="clientComercial" class="client-mini-select"><option value="">Sem comercial atribuído</option></select>'\n);\nindex = index.replace(\n  '<label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>',\n  '<label class="client-assignment-field">Agentes atribuídos<select id="clientAgentsAssigned" class="client-mini-select client-agents-select" multiple size="1"></select>'\n);\nindex = index.replace(\n  'Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente só por Admin ou por quem cadastrou o cliente.',\n  'Permite vários agentes. Clique no campo para abrir a lista; as atribuições automáticas continuam funcionando.'\n);\n\nconst importStatusCard = `'''
+          ns, n = re.subn(pattern, replacement, s, count=1)
+          if n != 1:
+              raise SystemExit(f'Bloco frágil não localizado: {n}')
+          p.write_text(ns)
+          PY
+      - name: Commit correction
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
+          git commit -m "fix: remover fragilidade do build dos seletores" || exit 0
+          git push
