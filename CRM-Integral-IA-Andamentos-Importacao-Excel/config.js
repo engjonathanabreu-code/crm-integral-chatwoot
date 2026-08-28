@@ -4,5 +4,10 @@ window.CRM_CONFIG = {
 };
 
 window.addEventListener("DOMContentLoaded", () => {
+  const userCardPolish = document.createElement("link");
+  userCardPolish.rel = "stylesheet";
+  userCardPolish.href = "./user-card-polish.css?v=20260828a";
+  document.head.appendChild(userCardPolish);
+
   import("./commercial-assignment-patch.js?v=20260828a").catch((error) => console.error("Falha ao carregar permissão Comercial", error));
 });
