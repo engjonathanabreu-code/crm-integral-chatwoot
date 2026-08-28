@@ -1,4 +1,4 @@
-name: Fix CRM idempotent build
+name: Fix CRM commercial permission build
 
 on:
   push:
@@ -13,29 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Make compact selector patch idempotent
+      - name: Align build templates
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
           source = path.read_text()
-          start_marker = '// Padroniza Dono do registro, Comercial e Agentes atribuídos como seletores compactos.\n'
-          end_marker = '\n\nconst importStatusCard = `'
-          start = source.find(start_marker)
-          end = source.find(end_marker, start)
-          if start < 0 or end < 0:
-            raise SystemExit('Bloco de seletores compactos não encontrado')
-          block = source[start:end]
-          if "if (!index.includes('client-mini-select'))" not in block:
-            body = block[len(start_marker):]
-            indented = '\n'.join('  ' + line if line else line for line in body.splitlines())
-            replacement = start_marker + "if (!index.includes('client-mini-select')) {\n" + indented + "\n}"
-            source = source[:start] + replacement + source[end:]
-          # O texto já pode ter sido atualizado diretamente no index; o build não deve exigir a versão antiga.
           source = source.replace(
-            '"Editável manualmente só por Admin ou por quem cadastrou o cliente.",\n  "Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente."',
-            '"Editável manualmente só por Admin ou por quem cadastrou o cliente.",\n  "Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente."'
+            'Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.',
+            'Admin, usuários do Comercial ou quem cadastrou o cliente podem atribuir/trocar o Comercial.'
           )
           path.write_text(source)
           PY
@@ -44,5 +30,5 @@ jobs:
           git config user.name "Integral Automation"
           git config user.email "actions@users.noreply.github.com"
           git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
-          git commit -m "fix: tornar ajustes visuais do build idempotentes" || exit 0
+          git commit -m "fix: alinhar build à permissão do Comercial" || exit 0
           git push
