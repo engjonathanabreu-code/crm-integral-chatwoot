@@ -1,0 +1,24 @@
+name: Run CRM user history patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/run-crm-user-history-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply CRM patch
+        run: python CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/patch-user-history.py
+      - name: Commit CRM fixes
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/index.html CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "feat: excluir atendimentos e tarefas com histórico por usuário" || exit 0
+          git push
