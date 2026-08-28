@@ -1,4 +1,4 @@
-name: Apply commercial assignment permission
+name: Fix CRM idempotent build
 
 on:
   push:
@@ -13,50 +13,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Allow Commercial users to assign Commercial
+      - name: Make compact selector patch idempotent
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          root = Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
-          app = root / 'app.js'
-          index = root / 'index.html'
-
-          js = app.read_text()
-          old = '''// Só o Admin ou quem cadastrou o cliente (created_by) pode
-          // atribuir/trocar o Comercial responsável.
-          function canAssignComercial(existingClient) {
-            if (isAdmin()) return true;
-            if (!existingClient) return true; // cliente novo: quem está criando é o created_by
-            return existingClient.created_by === state.user.id;
-          }'''
-          # Normaliza a indentação do literal para casar com o arquivo.
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
-          new = '''// Admin, usuários do Comercial ou quem cadastrou o cliente podem
-          // atribuir/trocar o Comercial responsável. O seletor continua listando
-          // somente usuários ativos com perfil Comercial.
-          function canAssignComercial(existingClient) {
-            if (isAdmin()) return true;
-            if (state.profile?.perfil === "comercial" || state.profile?.setor === "Comercial") return true;
-            if (!existingClient) return true; // cliente novo: quem está criando é o created_by
-            return existingClient.created_by === state.user.id;
-          }'''
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
-          if old not in js:
-            raise SystemExit('Bloco canAssignComercial esperado não encontrado')
-          app.write_text(js.replace(old, new, 1))
-
-          html = index.read_text()
-          html = html.replace(
-            'Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.',
-            'Admin, usuários do Comercial ou quem cadastrou o cliente podem atribuir/trocar o Comercial.'
+          path = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
+          source = path.read_text()
+          start_marker = '// Padroniza Dono do registro, Comercial e Agentes atribuídos como seletores compactos.\n'
+          end_marker = '\n\nconst importStatusCard = `'
+          start = source.find(start_marker)
+          end = source.find(end_marker, start)
+          if start < 0 or end < 0:
+            raise SystemExit('Bloco de seletores compactos não encontrado')
+          block = source[start:end]
+          if "if (!index.includes('client-mini-select'))" not in block:
+            body = block[len(start_marker):]
+            indented = '\n'.join('  ' + line if line else line for line in body.splitlines())
+            replacement = start_marker + "if (!index.includes('client-mini-select')) {\n" + indented + "\n}"
+            source = source[:start] + replacement + source[end:]
+          # O texto já pode ter sido atualizado diretamente no index; o build não deve exigir a versão antiga.
+          source = source.replace(
+            '"Editável manualmente só por Admin ou por quem cadastrou o cliente.",\n  "Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente."',
+            '"Editável manualmente só por Admin ou por quem cadastrou o cliente.",\n  "Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente."'
           )
-          index.write_text(html)
+          path.write_text(source)
           PY
       - name: Commit changes
         run: |
           git config user.name "Integral Automation"
           git config user.email "actions@users.noreply.github.com"
-          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/index.html
-          git commit -m "feat: permitir comercial atribuir responsável comercial" || exit 0
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
+          git commit -m "fix: tornar ajustes visuais do build idempotentes" || exit 0
           git push
