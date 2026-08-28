@@ -17,6 +17,7 @@ const state = {
   tickets: [],
   tasks: [],
   history: [],
+  userHistory: [],
   interactions: [],
   marketingEtapas: [],
   marketingProjects: [],
@@ -327,7 +328,8 @@ function resetState() {
     tickets: [],
     tasks: [],
     history: [],
-  interactions: [],
+    userHistory: [],
+    interactions: [],
     marketingEtapas: [],
     marketingProjects: [],
     marketingProgress: [],
@@ -406,17 +408,18 @@ async function loadData() {
         ]
       : [Promise.resolve({ data: [] }), Promise.resolve({ data: [] }), Promise.resolve({ data: [] })];
 
-    const [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, interactionsResult, etapasResult, projectsResult, progressResult] = await Promise.all([
+    const [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, userHistoryResult, interactionsResult, etapasResult, projectsResult, progressResult] = await Promise.all([
       supabase.from("profiles").select("id,nome,apelido,email,setor,perfil,ativo,created_at").order("apelido", { ascending: true, nullsFirst: false }).order("nome"),
       fetchAllClientsPaged(),
       supabase.from("atendimentos").select("*").order("created_at", { ascending: false }),
       supabase.from("tarefas").select("*").order("data", { ascending: true }),
       supabase.from("historico").select("*").order("created_at", { ascending: false }),
+      supabase.from("usuario_historico").select("*").order("created_at", { ascending: false }),
       supabase.from("interacoes").select("*").order("created_at", { ascending: false }),
       ...marketingQueries,
     ]);
 
-    const failures = [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, interactionsResult, etapasResult, projectsResult, progressResult].filter((result) => result.error);
+    const failures = [profilesResult, clientsResult, ticketsResult, tasksResult, historyResult, userHistoryResult, interactionsResult, etapasResult, projectsResult, progressResult].filter((result) => result.error);
     if (failures.length) throw failures[0].error;
 
     state.profiles = profilesResult.data || [];
@@ -424,6 +427,7 @@ async function loadData() {
     state.tickets = ticketsResult.data || [];
     state.tasks = tasksResult.data || [];
     state.history = historyResult.data || [];
+    state.userHistory = userHistoryResult.data || [];
     state.interactions = interactionsResult.data || [];
     state.marketingEtapas = etapasResult.data || [];
     state.marketingProjects = projectsResult.data || [];
@@ -758,6 +762,25 @@ function isCrmTicket(ticket) {
   return ticket.origem === "CRM";
 }
 
+function canDeleteOperationalRecord(record) {
+  return isAdmin() || record?.created_by === state.user?.id;
+}
+
+async function recordUserActivity({ userId, type, description, entity, entityId, data }) {
+  const targetUser = userId || state.user.id;
+  const { error } = await supabase.from("usuario_historico").insert({
+    usuario_id: targetUser,
+    executado_por: state.user.id,
+    tipo: type,
+    descricao: description,
+    entidade: entity,
+    entidade_id: entityId || null,
+    dados: data || null,
+  });
+  if (error) console.warn("Não foi possível registrar histórico do usuário:", error);
+  return !error;
+}
+
 function renderTickets() {
   const search = $("ticketSearch").value.trim().toLowerCase();
   const municipality = $("ticketMunicipalityFilter").value;
@@ -803,6 +826,7 @@ function renderTickets() {
       <div class="record-actions">
         <button class="secondary small-button" data-open-client="${ticket.cliente_id}">Abrir cliente</button>
         ${ticket.status !== "Resolvido" ? `<button class="primary small-button" data-resolve-ticket="${ticket.id}">Resolver</button>` : ""}
+        ${canDeleteOperationalRecord(ticket) ? `<button class="danger small-button" data-delete-ticket="${ticket.id}">Excluir</button>` : ""}
       </div>
     </article>`).join("") : emptyState("Nenhum atendimento encontrado.");
 
@@ -845,6 +869,7 @@ function renderTasks() {
       <div class="record-actions">
         <button class="secondary small-button" data-open-client="${task.cliente_id}">Abrir cliente</button>
         <button class="primary small-button" data-toggle-task="${task.id}">${task.concluida ? "Reabrir" : "Concluir"}</button>
+        ${canDeleteOperationalRecord(task) ? `<button class="danger small-button" data-delete-task="${task.id}">Excluir</button>` : ""}
       </div>
     </article>`).join("") : emptyState("Nenhuma tarefa encontrada.");
 
@@ -857,21 +882,57 @@ function renderUsers() {
   $("usersCount").textContent = state.profiles.length;
   const roleLabels = { usuario: "Usuário", comercial: "Comercial", marketing: "Marketing", admin: "Administrador" };
 
-  $("usersList").innerHTML = state.profiles.length ? state.profiles.map((profile) => `
-    <button type="button" class="user-admin-card" data-edit-user="${profile.id}">
+  const historyFor = (profile) => {
+    const persisted = state.userHistory
+      .filter((item) => item.usuario_id === profile.id)
+      .map((item) => ({
+        date: item.created_at,
+        type: item.tipo || "Atividade",
+        text: item.descricao || "Sem descrição",
+        entity: item.entidade || "",
+        entityId: item.entidade_id || "",
+      }));
+    const keys = new Set(persisted.map((item) => `${item.entity}:${item.entityId}:${item.type}`));
+    const currentTickets = state.tickets
+      .filter((item) => isCrmTicket(item) && item.created_by === profile.id)
+      .filter((item) => !keys.has(`atendimento:${item.id}:Atendimento criado`))
+      .map((item) => ({ date: item.created_at, type: "Atendimento criado", text: `${item.assunto || "Sem assunto"} • ${clientName(item.cliente_id)} • ${item.setor || "Sem setor"}` }));
+    const currentTasks = state.tasks
+      .filter((item) => item.created_by === profile.id)
+      .filter((item) => !keys.has(`tarefa:${item.id}:Tarefa criada`))
+      .map((item) => ({ date: item.created_at || item.data, type: "Tarefa criada", text: `${item.titulo || "Sem título"} • ${clientName(item.cliente_id)}${item.data ? ` • Prazo ${formatDate(item.data)}` : ""}` }));
+    return [...persisted, ...currentTickets, ...currentTasks]
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+      .slice(0, 40);
+  };
+
+  $("usersList").innerHTML = state.profiles.length ? state.profiles.map((profile) => {
+    const activities = historyFor(profile);
+    return `<article class="user-admin-card user-admin-card-with-history">
       <div class="user-admin-card-head">
         <div>
           <strong>${escapeHtml(profile.nome || profile.apelido || "Usuário")}</strong>
           <span class="muted">${escapeHtml(profile.email || "E-mail não informado")}</span>
         </div>
-        <span class="badge ${profile.ativo ? "closed" : "lost"}">${profile.ativo ? "Ativo" : "Inativo"}</span>
+        <div class="user-card-head-actions">
+          <span class="badge ${profile.ativo ? "closed" : "lost"}">${profile.ativo ? "Ativo" : "Inativo"}</span>
+          <button type="button" class="secondary small-button" data-edit-user="${profile.id}">Editar usuário</button>
+        </div>
       </div>
       <div class="user-admin-card-meta">
         <span><b>Setor:</b> ${escapeHtml(profile.setor || "—")}</span>
         <span><b>Função:</b> ${escapeHtml(roleLabels[profile.perfil] || "Usuário")}</span>
         <span><b>Usuário:</b> ${profile.apelido ? `@${escapeHtml(profile.apelido)}` : "—"}</span>
+        <span><b>Histórico:</b> ${activities.length} registro(s)</span>
       </div>
-    </button>`).join("") : emptyState("Nenhum usuário encontrado.");
+      <details class="user-activity-history">
+        <summary>Histórico de atendimentos e tarefas</summary>
+        <div class="user-activity-list">
+          ${activities.length ? activities.map((item) => `<div class="user-activity-item"><div><strong>${escapeHtml(item.type)}</strong><span>${escapeHtml(item.text)}</span></div><time>${formatDateTime(item.date)}</time></div>`).join("") : `<div class="empty compact">Nenhum atendimento ou tarefa registrado por este usuário.</div>`}
+        </div>
+      </details>
+    </article>`;
+  }).join("") : emptyState("Nenhum usuário encontrado.");
 }
 
 function marketingProgressFor(projectId) {
@@ -1591,7 +1652,6 @@ function openNewClient() {
   $("clientStatus").value = "Novo";
   if ($("clientProject")) $("clientProject").value = "";
   if ($("clientState")) $("clientState").value = "";
-  $("clientResponsible").value = state.profile.nome;
   $("clientOwner").value = state.user.id;
   if ($("clientComercial")) {
     $("clientComercial").value = "";
@@ -1619,7 +1679,6 @@ function openEditClient(client) {
   $("clientSource").value = client.origem || "Indicação";
   $("clientStatus").value = client.status || "Novo";
   $("clientValue").value = client.valor_estimado || 0;
-  $("clientResponsible").value = client.responsavel || "";
   $("clientOwner").value = client.owner_id;
   if ($("clientComercial")) {
     $("clientComercial").value = client.comercial_id || "";
@@ -1664,9 +1723,7 @@ async function saveClient(event) {
     origem: $("clientSource").value,
     status: $("clientStatus").value,
     valor_estimado: Number($("clientValue").value || 0),
-    responsavel: $("clientResponsible").value.trim() || null,
     codigo_processo: $("clientProcessCode")?.value.trim() || null,
-    estado_civil: $("clientCivilStatus")?.value.trim() || null,
     observacoes: $("clientNotes").value.trim() || null,
   };
 
@@ -1700,7 +1757,7 @@ async function saveClient(event) {
 function describeClientChanges(oldClient, payload) {
   const fields = {
     nome: "Nome", telefone: "Telefone", email: "E-mail", projeto_id: "Projeto", estado: "Estado", municipio: "Município", nucleo: "Núcleo", remessa: "Remessa",
-    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", responsavel: "Responsável", codigo_processo: "Código do processo", estado_civil: "Estado civil", observacoes: "Observações", owner_id: "Dono do registro", comercial_id: "Comercial", agentes_atribuidos: "Agentes atribuídos",
+    origem: "Origem", status: "Status", valor_estimado: "Valor estimado", codigo_processo: "Código do processo", observacoes: "Observações", owner_id: "Dono do registro", comercial_id: "Comercial", agentes_atribuidos: "Agentes atribuídos",
   };
   return Object.entries(fields).flatMap(([key, label]) => {
     const before = oldClient[key] ?? "";
@@ -1750,13 +1807,13 @@ function renderClientDetail(clientId) {
     ["Estado", client.estado || linkedProject?.estado || "-"], ["Município", client.municipio || linkedProject?.cidade || "-"],
     ["Núcleo", client.nucleo || "-"], ["Remessa", client.remessa || "-"], ["Origem", client.origem || "-"],
     ["Canal", client.canal || "CRM"], ["Último setor", client.ultimo_setor || "-"], ["Último agente", client.ultimo_agente || "-"],
-    ["Responsável operacional", client.responsavel || "-"], ["Dono do registro", profileName(client.owner_id)],
+    ["Dono do registro", profileName(client.owner_id)],
     ["Comercial", client.comercial_id ? profileName(client.comercial_id) : "Sem comercial atribuído"],
     ["Agentes atribuídos", (client.agentes_atribuidos || []).length ? client.agentes_atribuidos.map(profileName).join(", ") : "Nenhum agente atribuído"],
     ["Código do processo", client.codigo_processo || "-"],
     ["CPF", client.cpf || "-"], ["Endereço", client.endereco || "-"], ["Tipo de imóvel", client.tipo_imovel || "-"],
     ["Tipo de posse", client.tipo_posse || "-"], ["Área da posse", client.area_posse || "-"],
-    ["Estado civil", client.estado_civil || "-"], ["Tipo documental", client.tipo_documental || "-"], ["Contrato", client.contrato_status || "-"],
+    ["Tipo documental", client.tipo_documental || "-"], ["Contrato", client.contrato_status || "-"],
     ["Procuração", client.procuracao_status || "-"], ["Requerimento", client.requerimento_status || "-"], ["Distrato", client.distrato_status || "-"],
     ["Documento faltante", client.documento_faltante || "-"], ["Informação faltante", client.informacao_faltante || "-"],
     ["Situação documental", client.situacao_documental || "-"], ["Observação documental", client.observacao_documental || "-"], ["Observações", client.observacoes || "-"],
@@ -2137,6 +2194,38 @@ async function toggleTask(id) {
   if (error) return showToast(friendlyErrorMessage(error), "error");
   await loadData();
   showToast(task.concluida ? "Tarefa reaberta." : "Tarefa concluída.");
+}
+
+async function deleteTicket(id) {
+  const ticket = state.tickets.find((item) => item.id === id);
+  if (!ticket || !canDeleteOperationalRecord(ticket)) return showToast("Você não tem permissão para excluir este atendimento.", "error");
+  if (!window.confirm(`Excluir o atendimento "${ticket.assunto || "Sem assunto"}"?\n\nEle sairá da lista operacional, mas continuará registrado no histórico do usuário.`)) return;
+  const { error } = await supabase.from("atendimentos").delete().eq("id", id);
+  if (error) return showToast(friendlyErrorMessage(error), "error");
+  await recordUserActivity({
+    userId: ticket.created_by || state.user.id,
+    type: "Atendimento excluído",
+    description: `Atendimento removido da lista operacional: ${ticket.assunto || "Sem assunto"} • Setor: ${ticket.setor || "Não informado"}.`,
+    entity: "atendimento", entityId: ticket.id, data: ticket,
+  });
+  await loadData();
+  showToast("Atendimento excluído e preservado no histórico do usuário.");
+}
+
+async function deleteTask(id) {
+  const task = state.tasks.find((item) => item.id === id);
+  if (!task || !canDeleteOperationalRecord(task)) return showToast("Você não tem permissão para excluir esta tarefa.", "error");
+  if (!window.confirm(`Excluir a tarefa "${task.titulo || "Sem título"}"?\n\nEla sairá da agenda, mas continuará registrada no histórico do usuário.`)) return;
+  const { error } = await supabase.from("tarefas").delete().eq("id", id);
+  if (error) return showToast(friendlyErrorMessage(error), "error");
+  await recordUserActivity({
+    userId: task.created_by || state.user.id,
+    type: "Tarefa excluída",
+    description: `Tarefa removida da lista operacional: ${task.titulo || "Sem título"}${task.data ? ` • Prazo: ${formatDate(task.data)}` : ""}.`,
+    entity: "tarefa", entityId: task.id, data: task,
+  });
+  await loadData();
+  showToast("Tarefa excluída e preservada no histórico do usuário.");
 }
 
 /* ------------------------------------------------------------------
@@ -2539,6 +2628,12 @@ function bindEvents() {
 
     const taskButton = event.target.closest("[data-toggle-task]");
     if (taskButton) toggleTask(taskButton.dataset.toggleTask);
+
+    const deleteTicketButton = event.target.closest("[data-delete-ticket]");
+    if (deleteTicketButton) deleteTicket(deleteTicketButton.dataset.deleteTicket);
+
+    const deleteTaskButton = event.target.closest("[data-delete-task]");
+    if (deleteTaskButton) deleteTask(deleteTaskButton.dataset.deleteTask);
 
     const editProjectButton = event.target.closest("[data-edit-project]");
     if (editProjectButton) openProjectDialog(projectById(editProjectButton.dataset.editProject));

@@ -673,3 +673,21 @@ details.nucleus-group:not([open]) > summary::after { transform: rotate(-90deg); 
   .user-card-grid { grid-template-columns: 1fr; }
   .user-admin-card { min-height: auto; }
 }
+
+
+/* Histórico operacional dentro dos cards de usuário */
+.user-admin-card-with-history{display:block;width:100%;text-align:left;cursor:default}
+.user-card-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.user-activity-history{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}
+.user-activity-history>summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--text);list-style:none;display:flex;align-items:center;justify-content:space-between}
+.user-activity-history>summary::-webkit-details-marker{display:none}
+.user-activity-history>summary::after{content:'+';font-size:16px;color:var(--muted)}
+.user-activity-history[open]>summary::after{content:'−'}
+.user-activity-list{display:grid;gap:7px;margin-top:10px;max-height:320px;overflow:auto;padding-right:3px}
+.user-activity-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2)}
+.user-activity-item div{display:grid;gap:3px;min-width:0}
+.user-activity-item strong{font-size:11.5px}
+.user-activity-item span,.user-activity-item time{font-size:10.5px;color:var(--muted);line-height:1.4}
+.user-activity-item time{white-space:nowrap}
+.record-actions .danger{white-space:nowrap}
+@media(max-width:760px){.user-activity-item{grid-template-columns:1fr}.user-card-head-actions{justify-content:flex-start}}
