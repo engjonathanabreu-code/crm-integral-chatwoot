@@ -1,0 +1,69 @@
+name: Apply user history and favicon
+on:
+  push:
+    paths:
+      - '.crm-user-history-favicon-trigger'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root=Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          app_path=root/'app.js'
+          index_path=root/'index.html'
+          css_path=root/'style.css'
+          app=app_path.read_text()
+          index=index_path.read_text()
+          css=css_path.read_text()
+
+          # Favicon usando a própria marca já usada pelo CRM.
+          if 'rel="icon"' not in index:
+              index=index.replace('  <title>CRM Integral</title>\n', '  <title>CRM Integral</title>\n  <link rel="icon" type="image/png" href="https://www.integralse.com.br/assets/logo.png" />\n  <link rel="apple-touch-icon" href="https://www.integralse.com.br/assets/logo.png" />\n', 1)
+
+          # Histórico explícito dentro do editor do usuário.
+          history_html='''\n      <section class="user-operational-history-panel">\n        <div class="user-operational-history-head">\n          <div>\n            <p class="eyebrow">Histórico interno do CRM</p>\n            <h3>Atendimentos e tarefas</h3>\n            <p class="muted">Registros criados por este usuário no CRM, incluindo itens já excluídos da lista operacional.</p>\n          </div>\n          <div id="resetPasswordOperationalStats" class="user-operational-history-stats"></div>\n        </div>\n        <div id="resetPasswordOperationalHistory" class="user-operational-history-list"></div>\n      </section>\n'''
+          anchor='''      </div>\n      <p id="resetPasswordMessage" class="form-message"></p>\n      <div class="dialog-actions">'''
+          if 'resetPasswordOperationalHistory' not in index:
+              if anchor not in index:
+                  raise SystemExit('Âncora do diálogo de usuário não encontrada')
+              index=index.replace(anchor, '      </div>\n'+history_html+'      <p id="resetPasswordMessage" class="form-message"></p>\n      <div class="dialog-actions">', 1)
+
+          helper=r'''\n\nfunction getUserOperationalHistory(userId) {\n  const persisted = state.userHistory\n    .filter((item) => item.usuario_id === userId)\n    .map((item) => ({\n      date: item.created_at,\n      type: item.tipo || "Atividade",\n      text: item.descricao || "Sem descrição",\n      entity: item.entidade || "",\n      entityId: item.entidade_id || "",\n      deleted: /exclu[ií]d/i.test(item.tipo || ""),\n    }));\n\n  const deletedKeys = new Set(persisted\n    .filter((item) => item.deleted && item.entityId)\n    .map((item) => `${item.entity}:${item.entityId}`));\n\n  const tickets = state.tickets\n    .filter((item) => isCrmTicket(item) && item.created_by === userId)\n    .filter((item) => !deletedKeys.has(`atendimento:${item.id}`))\n    .map((item) => ({\n      date: item.created_at,\n      type: "Atendimento criado",\n      text: `${item.assunto || "Sem assunto"} • ${clientName(item.cliente_id)} • ${item.setor || "Sem setor"} • ${item.status || "Sem status"}`,\n      entity: "atendimento",\n      entityId: item.id,\n      deleted: false,\n    }));\n\n  const tasks = state.tasks\n    .filter((item) => item.created_by === userId)\n    .filter((item) => !deletedKeys.has(`tarefa:${item.id}`))\n    .map((item) => ({\n      date: item.created_at || item.data,\n      type: item.concluida ? "Tarefa concluída" : "Tarefa criada",\n      text: `${item.titulo || "Sem título"} • ${clientName(item.cliente_id)}${item.data ? ` • Prazo ${formatDate(item.data)}` : ""}${item.prioridade ? ` • ${item.prioridade}` : ""}`,\n      entity: "tarefa",\n      entityId: item.id,\n      deleted: false,\n    }));\n\n  return [...persisted, ...tickets, ...tasks]\n    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));\n}\n\nfunction renderUserOperationalHistory(userId) {\n  const list = $("resetPasswordOperationalHistory");\n  const stats = $("resetPasswordOperationalStats");\n  if (!list || !stats) return;\n  const rows = getUserOperationalHistory(userId);\n  const atendimentoCount = rows.filter((item) => item.entity === "atendimento").length;\n  const tarefaCount = rows.filter((item) => item.entity === "tarefa").length;\n  const deletedCount = rows.filter((item) => item.deleted).length;\n\n  stats.innerHTML = `<span><strong>${atendimentoCount}</strong> atendimentos</span><span><strong>${tarefaCount}</strong> tarefas</span>${deletedCount ? `<span><strong>${deletedCount}</strong> excluídos</span>` : ""}`;\n  list.innerHTML = rows.length ? rows.map((item) => `\n    <article class="user-operational-history-item ${item.deleted ? "is-deleted" : ""}">\n      <div class="user-operational-history-copy">\n        <div class="user-operational-history-type"><strong>${escapeHtml(item.type)}</strong>${item.deleted ? `<span class="badge lost">Preservado</span>` : ""}</div>\n        <p>${escapeHtml(item.text)}</p>\n      </div>\n      <time>${formatDateTime(item.date)}</time>\n    </article>`).join("") : `<div class="empty compact">Nenhum atendimento ou tarefa interna registrado por este usuário.</div>`;\n}\n'''
+          marker='function renderUsers() {'
+          if 'function getUserOperationalHistory(userId)' not in app:
+              if marker not in app:
+                  raise SystemExit('renderUsers não localizado')
+              app=app.replace(marker, helper+'\n'+marker, 1)
+
+          call='''  $("resetPasswordMessage").className = "form-message";\n  $("resetPasswordMessage").textContent = "";\n  $("resetPasswordDialog").showModal();'''
+          replacement='''  $("resetPasswordMessage").className = "form-message";\n  $("resetPasswordMessage").textContent = "";\n  renderUserOperationalHistory(profile.id);\n  $("resetPasswordDialog").showModal();'''
+          if 'renderUserOperationalHistory(profile.id);' not in app:
+              if call not in app:
+                  raise SystemExit('openResetPasswordDialog não localizado')
+              app=app.replace(call,replacement,1)
+
+          css_patch=r'''\n\n/* Histórico operacional explícito no editor de usuário */\n.user-operational-history-panel{margin-top:18px;padding-top:18px;border-top:1px solid var(--border)}\n.user-operational-history-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:12px}\n.user-operational-history-head h3{margin:0 0 3px;font-size:15px}\n.user-operational-history-head p.muted{margin:0;max-width:610px;font-size:12px}\n.user-operational-history-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}\n.user-operational-history-stats span{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);font-size:11px;color:var(--muted);white-space:nowrap}\n.user-operational-history-stats strong{color:var(--ink);font-size:12px}\n.user-operational-history-list{display:grid;max-height:310px;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface)}\n.user-operational-history-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:11px 13px;border-top:1px solid var(--border)}\n.user-operational-history-item:first-child{border-top:0}\n.user-operational-history-item.is-deleted{background:rgba(196,69,63,.025)}\n.user-operational-history-copy{min-width:0}\n.user-operational-history-type{display:flex;align-items:center;gap:8px;margin-bottom:3px}\n.user-operational-history-type strong{font-size:12px}\n.user-operational-history-copy p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.45;overflow-wrap:anywhere}\n.user-operational-history-item time{color:var(--muted);font-size:11px;white-space:nowrap}\n@media(max-width:720px){.user-operational-history-head{flex-direction:column}.user-operational-history-stats{justify-content:flex-start}.user-operational-history-item{grid-template-columns:1fr}.user-operational-history-item time{white-space:normal}}\n'''
+          if 'Histórico operacional explícito no editor de usuário' not in css:
+              css += css_patch
+
+          app_path.write_text(app)
+          index_path.write_text(index)
+          css_path.write_text(css)
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/index.html CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "feat: exibir histórico interno no usuário e adicionar favicon" || exit 0
+          git push
