@@ -91,7 +91,6 @@ app = replaceRequired(
 );
 
 // Evita herdar o Código do Processo (e Estado Civil) do cliente editado anteriormente.
-// Antes openEditClient não preenchia esses campos, deixando o valor anterior no input.
 app = replaceRequired(
   app,
 `  $("clientShipment").value = client.remessa || "";
@@ -113,13 +112,9 @@ app = replaceRequired(
   return projectDataFrom(projectById($("clientImportProject")?.value || ""));
 }`,
 `function importProjectData() {
-  // Projeto/NUI escolhido manualmente continua tendo prioridade.
   const project = projectById($("clientImportProject")?.value || "");
   if (project) return projectDataFrom(project);
 
-  // Quando a planilha não traz município e não existe NUI para o prefixo,
-  // permite selecionar um município já conhecido ou cadastrar um novo apenas
-  // para esta importação, sem criar Projeto/NUI artificialmente.
   const selected = $("clientImportMunicipality")?.value || "";
   const [selectedCity = "", selectedState = ""] = selected.split("|");
   const typedCity = $("clientImportMunicipalityNew")?.value.trim() || "";
@@ -131,7 +126,6 @@ app = replaceRequired(
   "município manual na importação"
 );
 
-// Preenche o seletor de municípios com cidades já existentes em Projetos e Clientes.
 app = replaceRequired(
   app,
 `  if ($("clientImportProject")) $("clientImportProject").innerHTML = \`<option value="">Sem NUI — vincular depois</option>\${projectOptions}\`;
@@ -161,7 +155,6 @@ app = replaceRequired(
   "lista de municípios da importação"
 );
 
-// Ao abrir a importação, limpa também o município de reserva.
 app = replaceRequired(
   app,
 `  $("clientImportFile").value = "";
@@ -175,7 +168,6 @@ app = replaceRequired(
   "limpeza do município da importação"
 );
 
-// Atualiza a prévia sempre que o município de reserva for alterado.
 app = replaceRequired(
   app,
 `  $("clientImportProject").addEventListener("change", () => { if (state.importRows.length) renderClientImportPreview(); });
@@ -197,7 +189,6 @@ await writeFile(resolve(out, "app.js"), app, "utf8");
 
 let index = await readFile(resolve(root, "index.html"), "utf8");
 
-// Campo de município opcional na etapa de importação.
 index = replaceRequired(
   index,
 `          <label>Projeto / NUI (reserva, se o prefixo do código não for reconhecido)
@@ -222,10 +213,33 @@ index = replaceRequired(
   "campos de município na importação"
 );
 
-// Texto de permissão dos agentes atualizado para refletir o Comercial.
 index = index.replace(
   "Editável manualmente só por Admin ou por quem cadastrou o cliente.",
   "Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente."
+);
+
+// Padroniza Dono do registro, Comercial e Agentes atribuídos como seletores compactos.
+index = replaceRequired(
+  index,
+`        <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
+        <label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>
+          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+        </label>
+        <label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>
+          <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente.</small>
+        </label>`,
+`        <label class="admin-only hidden client-assignment-field">Dono do registro
+          <select id="clientOwner" class="client-mini-select"></select>
+        </label>
+        <label class="client-assignment-field">Comercial
+          <select id="clientComercial" class="client-mini-select"><option value="">Sem comercial atribuído</option></select>
+          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+        </label>
+        <label class="client-assignment-field">Agentes atribuídos
+          <select id="clientAgentsAssigned" class="client-mini-select client-agents-select" multiple size="1"></select>
+          <small class="field-help">Permite vários agentes. Clique no campo para abrir a lista; as atribuições automáticas continuam funcionando.</small>
+        </label>`,
+  "seletores compactos do cliente"
 );
 
 const importStatusCard = `
@@ -290,7 +304,6 @@ const weeklyLoader = `
 index = index.replace("</body>", `${weeklyLoader}\n</body>`);
 await writeFile(resolve(out, "index.html"), index, "utf8");
 
-// Ajustes visuais focados no card/formulário do cliente e na legibilidade dos erros.
 let style = await readFile(resolve(out, "style.css"), "utf8");
 style += `
 
@@ -316,7 +329,7 @@ style += `
 #clientFormDialog { width: min(820px, 96vw); }
 #clientFormDialog .dialog-body { padding: 20px 22px; }
 #clientFormDialog .dialog-head { margin-bottom: 14px; padding-bottom: 13px; }
-#clientFormDialog .form-grid.two { gap: 10px 12px; }
+#clientFormDialog .form-grid.two { gap: 10px 12px; align-items: start; }
 #clientFormDialog label { gap: 5px; color: #596069; font-size: 11.5px; font-weight: 650; letter-spacing: .005em; }
 #clientFormDialog input,
 #clientFormDialog select,
@@ -327,19 +340,61 @@ style += `
   font-size: 12.6px;
 }
 #clientFormDialog textarea { min-height: 72px; }
-#clientFormDialog select[multiple] {
-  min-height: 104px;
-  padding: 5px;
-  background: var(--surface-2);
-}
-#clientFormDialog select[multiple] option {
-  padding: 7px 9px;
-  margin: 2px 0;
-  border-radius: 6px;
-  font-size: 12px;
-}
 #clientFormDialog .field-help { margin-top: 2px; font-size: 10.5px; line-height: 1.35; }
 #clientFormDialog .dialog-actions { margin-top: 14px; padding-top: 13px; }
+
+/* Responsáveis: todos usam a mesma linguagem visual de mini-menu. */
+#clientFormDialog .client-assignment-field {
+  align-self: start;
+  min-width: 0;
+}
+#clientFormDialog .client-mini-select {
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  padding: 7px 34px 7px 10px;
+  border: 1px solid #dfe3e5;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #25292e;
+  font-size: 12.4px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+#clientFormDialog .client-mini-select:disabled {
+  color: #747b82;
+  background: #f5f6f6;
+}
+#clientFormDialog .client-agents-select {
+  display: block;
+  height: 38px;
+  min-height: 38px;
+  overflow: hidden;
+  padding: 5px 9px;
+  font-weight: 500;
+  transition: height .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+#clientFormDialog .client-agents-select:focus {
+  position: relative;
+  z-index: 8;
+  height: 132px;
+  min-height: 132px;
+  overflow-y: auto;
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--primary-soft), 0 12px 26px rgba(20,24,28,.09);
+}
+#clientFormDialog .client-agents-select option {
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+#clientFormDialog .client-agents-select option:checked {
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  font-weight: 650;
+}
 
 .client-row {
   padding: 10px 12px;
