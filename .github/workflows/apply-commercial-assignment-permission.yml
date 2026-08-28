@@ -58,3 +58,5 @@ function canAssignComercial(existingClient) {
           git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/index.html
           git commit -m "feat: permitir comercial atribuir responsável comercial" || exit 0
           git push
+
+# trigger 2026-08-28
