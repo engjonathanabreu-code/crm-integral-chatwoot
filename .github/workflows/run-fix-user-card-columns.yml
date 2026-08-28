@@ -1,0 +1,25 @@
+name: Run CRM user card columns patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/run-fix-user-card-columns.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/fix_user_card_columns.py
+      - run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "fix: abrir card de usuario e alinhar botoes em colunas" || exit 0
+          git push
