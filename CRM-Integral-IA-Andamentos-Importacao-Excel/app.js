@@ -876,7 +876,72 @@ function renderTasks() {
   $("tasksLoadMore").classList.toggle("hidden", filtered.length <= visible.length);
 }
 
-\n\nfunction getUserOperationalHistory(userId) {\n  const persisted = state.userHistory\n    .filter((item) => item.usuario_id === userId)\n    .map((item) => ({\n      date: item.created_at,\n      type: item.tipo || "Atividade",\n      text: item.descricao || "Sem descrição",\n      entity: item.entidade || "",\n      entityId: item.entidade_id || "",\n      deleted: /exclu[ií]d/i.test(item.tipo || ""),\n    }));\n\n  const deletedKeys = new Set(persisted\n    .filter((item) => item.deleted && item.entityId)\n    .map((item) => `${item.entity}:${item.entityId}`));\n\n  const tickets = state.tickets\n    .filter((item) => isCrmTicket(item) && item.created_by === userId)\n    .filter((item) => !deletedKeys.has(`atendimento:${item.id}`))\n    .map((item) => ({\n      date: item.created_at,\n      type: "Atendimento criado",\n      text: `${item.assunto || "Sem assunto"} • ${clientName(item.cliente_id)} • ${item.setor || "Sem setor"} • ${item.status || "Sem status"}`,\n      entity: "atendimento",\n      entityId: item.id,\n      deleted: false,\n    }));\n\n  const tasks = state.tasks\n    .filter((item) => item.created_by === userId)\n    .filter((item) => !deletedKeys.has(`tarefa:${item.id}`))\n    .map((item) => ({\n      date: item.created_at || item.data,\n      type: item.concluida ? "Tarefa concluída" : "Tarefa criada",\n      text: `${item.titulo || "Sem título"} • ${clientName(item.cliente_id)}${item.data ? ` • Prazo ${formatDate(item.data)}` : ""}${item.prioridade ? ` • ${item.prioridade}` : ""}`,\n      entity: "tarefa",\n      entityId: item.id,\n      deleted: false,\n    }));\n\n  return [...persisted, ...tickets, ...tasks]\n    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));\n}\n\nfunction renderUserOperationalHistory(userId) {\n  const list = $("resetPasswordOperationalHistory");\n  const stats = $("resetPasswordOperationalStats");\n  if (!list || !stats) return;\n  const rows = getUserOperationalHistory(userId);\n  const atendimentoCount = rows.filter((item) => item.entity === "atendimento").length;\n  const tarefaCount = rows.filter((item) => item.entity === "tarefa").length;\n  const deletedCount = rows.filter((item) => item.deleted).length;\n\n  stats.innerHTML = `<span><strong>${atendimentoCount}</strong> atendimentos</span><span><strong>${tarefaCount}</strong> tarefas</span>${deletedCount ? `<span><strong>${deletedCount}</strong> excluídos</span>` : ""}`;\n  list.innerHTML = rows.length ? rows.map((item) => `\n    <article class="user-operational-history-item ${item.deleted ? "is-deleted" : ""}">\n      <div class="user-operational-history-copy">\n        <div class="user-operational-history-type"><strong>${escapeHtml(item.type)}</strong>${item.deleted ? `<span class="badge lost">Preservado</span>` : ""}</div>\n        <p>${escapeHtml(item.text)}</p>\n      </div>\n      <time>${formatDateTime(item.date)}</time>\n    </article>`).join("") : `<div class="empty compact">Nenhum atendimento ou tarefa interna registrado por este usuário.</div>`;\n}\n
+
+
+function getUserOperationalHistory(userId) {
+  const persisted = state.userHistory
+    .filter((item) => item.usuario_id === userId)
+    .map((item) => ({
+      date: item.created_at,
+      type: item.tipo || "Atividade",
+      text: item.descricao || "Sem descrição",
+      entity: item.entidade || "",
+      entityId: item.entidade_id || "",
+      deleted: /exclu[ií]d/i.test(item.tipo || ""),
+    }));
+
+  const deletedKeys = new Set(persisted
+    .filter((item) => item.deleted && item.entityId)
+    .map((item) => `${item.entity}:${item.entityId}`));
+
+  const tickets = state.tickets
+    .filter((item) => isCrmTicket(item) && item.created_by === userId)
+    .filter((item) => !deletedKeys.has(`atendimento:${item.id}`))
+    .map((item) => ({
+      date: item.created_at,
+      type: "Atendimento criado",
+      text: `${item.assunto || "Sem assunto"} • ${clientName(item.cliente_id)} • ${item.setor || "Sem setor"} • ${item.status || "Sem status"}`,
+      entity: "atendimento",
+      entityId: item.id,
+      deleted: false,
+    }));
+
+  const tasks = state.tasks
+    .filter((item) => item.created_by === userId)
+    .filter((item) => !deletedKeys.has(`tarefa:${item.id}`))
+    .map((item) => ({
+      date: item.created_at || item.data,
+      type: item.concluida ? "Tarefa concluída" : "Tarefa criada",
+      text: `${item.titulo || "Sem título"} • ${clientName(item.cliente_id)}${item.data ? ` • Prazo ${formatDate(item.data)}` : ""}${item.prioridade ? ` • ${item.prioridade}` : ""}`,
+      entity: "tarefa",
+      entityId: item.id,
+      deleted: false,
+    }));
+
+  return [...persisted, ...tickets, ...tasks]
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+}
+
+function renderUserOperationalHistory(userId) {
+  const list = $("resetPasswordOperationalHistory");
+  const stats = $("resetPasswordOperationalStats");
+  if (!list || !stats) return;
+  const rows = getUserOperationalHistory(userId);
+  const atendimentoCount = rows.filter((item) => item.entity === "atendimento").length;
+  const tarefaCount = rows.filter((item) => item.entity === "tarefa").length;
+  const deletedCount = rows.filter((item) => item.deleted).length;
+
+  stats.innerHTML = `<span><strong>${atendimentoCount}</strong> atendimentos</span><span><strong>${tarefaCount}</strong> tarefas</span>${deletedCount ? `<span><strong>${deletedCount}</strong> excluídos</span>` : ""}`;
+  list.innerHTML = rows.length ? rows.map((item) => `
+    <article class="user-operational-history-item ${item.deleted ? "is-deleted" : ""}">
+      <div class="user-operational-history-copy">
+        <div class="user-operational-history-type"><strong>${escapeHtml(item.type)}</strong>${item.deleted ? `<span class="badge lost">Preservado</span>` : ""}</div>
+        <p>${escapeHtml(item.text)}</p>
+      </div>
+      <time>${formatDateTime(item.date)}</time>
+    </article>`).join("") : `<div class="empty compact">Nenhum atendimento ou tarefa interna registrado por este usuário.</div>`;
+}
+
 function renderUsers() {
   if (!isAdmin()) return;
 
