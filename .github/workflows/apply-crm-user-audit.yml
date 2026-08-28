@@ -1,0 +1,171 @@
+name: Apply CRM user audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-crm-user-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch CRM
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          index = root / 'index.html'
+          app = root / 'app.js'
+
+          html = index.read_text()
+          replacements = {
+            '<label>Responsável operacional<input id="clientResponsible" /></label>': '<input id="clientResponsible" type="hidden" />',
+            '<label>Estado civil<input id="clientCivilStatus" /></label>': '<input id="clientCivilStatus" type="hidden" />',
+          }
+          for old, new in replacements.items():
+            if old not in html:
+              raise SystemExit(f'HTML esperado não encontrado: {old}')
+            html = html.replace(old, new, 1)
+          index.write_text(html)
+
+          js = app.read_text()
+
+          old_task = '''<div class="record-actions">
+                <button class="secondary small-button" data-open-client="${task.cliente_id}">Abrir cliente</button>
+                <button class="primary small-button" data-toggle-task="${task.id}">${task.concluida ? "Reabrir" : "Concluir"}</button>
+              </div>'''
+          new_task = '''<div class="record-actions">
+                <button class="secondary small-button" data-open-client="${task.cliente_id}">Abrir cliente</button>
+                <button class="primary small-button" data-toggle-task="${task.id}">${task.concluida ? "Reabrir" : "Concluir"}</button>
+                <button class="danger small-button" data-delete-task="${task.id}">Excluir</button>
+              </div>'''
+          if old_task not in js:
+            raise SystemExit('Bloco de ações de tarefas não encontrado')
+          js = js.replace(old_task, new_task, 1)
+
+          old_ticket = '''<div class="record-actions">
+                <button class="secondary small-button" data-open-client="${ticket.cliente_id}">Abrir cliente</button>
+                ${ticket.status !== "Resolvido" ? `<button class="primary small-button" data-resolve-ticket="${ticket.id}">Resolver</button>` : ""}
+              </div>'''
+          new_ticket = '''<div class="record-actions">
+                <button class="secondary small-button" data-open-client="${ticket.cliente_id}">Abrir cliente</button>
+                ${ticket.status !== "Resolvido" ? `<button class="primary small-button" data-resolve-ticket="${ticket.id}">Resolver</button>` : ""}
+                <button class="danger small-button" data-delete-ticket="${ticket.id}">Excluir</button>
+              </div>'''
+          if old_ticket not in js:
+            raise SystemExit('Bloco de ações de atendimentos não encontrado')
+          js = js.replace(old_ticket, new_ticket, 1)
+
+          audit_code = r'''
+
+// ===== Auditoria de exclusões por usuário =====
+async function deleteTaskWithAudit(id) {
+  if (!id || !supabase) return;
+  const task = state.tasks.find((item) => item.id === id);
+  const label = task?.titulo ? ` "${task.titulo}"` : "";
+  if (!window.confirm(`Excluir a tarefa${label}?\n\nEla sairá da lista, mas a exclusão ficará registrada no histórico do seu usuário.`)) return;
+  const { error } = await supabase.rpc("excluir_tarefa_com_historico", { p_tarefa_id: id });
+  if (error) return showToast(`Não foi possível excluir a tarefa: ${friendlyErrorMessage(error)}`, "error");
+  showToast("Tarefa excluída e registrada no histórico do usuário.");
+  await loadAllData();
+}
+
+async function deleteTicketWithAudit(id) {
+  if (!id || !supabase) return;
+  const ticket = state.tickets.find((item) => item.id === id);
+  const label = ticket?.assunto || ticket?.motivo_contato || "";
+  if (!window.confirm(`Excluir este atendimento${label ? ` ("${label}")` : ""}?\n\nEle sairá da lista, mas a exclusão ficará registrada no histórico do seu usuário.`)) return;
+  const { error } = await supabase.rpc("excluir_atendimento_com_historico", { p_atendimento_id: id });
+  if (error) return showToast(`Não foi possível excluir o atendimento: ${friendlyErrorMessage(error)}`, "error");
+  showToast("Atendimento excluído e registrado no histórico do usuário.");
+  await loadAllData();
+}
+
+function formatUserAuditDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+async function renderUserAuditHistory(userId) {
+  if (!userId || !supabase) return;
+  const dialog = $("resetPasswordDialog");
+  if (!dialog) return;
+  let section = $("userAuditHistory");
+  if (!section) {
+    section = document.createElement("section");
+    section.id = "userAuditHistory";
+    section.className = "user-audit-history";
+    const message = $("resetPasswordMessage");
+    if (message?.parentElement) message.before(section);
+    else (dialog.querySelector(".dialog-body") || dialog).appendChild(section);
+  }
+  section.innerHTML = '<div class="user-audit-title">Histórico do usuário</div><p class="muted">Carregando...</p>';
+  const { data, error } = await supabase
+    .from("usuario_historico")
+    .select("id,tipo,descricao,entidade,created_at")
+    .eq("usuario_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  if (error) {
+    section.innerHTML = `<div class="user-audit-title">Histórico do usuário</div><p class="muted">Não foi possível carregar: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  section.innerHTML = `<div class="user-audit-title">Histórico do usuário</div>${
+    data?.length
+      ? `<div class="user-audit-list">${data.map((row) => `<article class="user-audit-item"><strong>${escapeHtml(row.tipo)}</strong><p>${escapeHtml(row.descricao)}</p><time>${escapeHtml(formatUserAuditDate(row.created_at))}</time></article>`).join("")}</div>`
+      : '<p class="muted">Nenhuma exclusão registrada para este usuário.</p>'
+  }`;
+}
+
+const userAuditStyle = document.createElement("style");
+userAuditStyle.textContent = `
+  .user-audit-history{margin-top:18px;padding-top:16px;border-top:1px solid var(--border,#e5e7eb)}
+  .user-audit-title{font-size:13px;font-weight:800;margin-bottom:9px}
+  .user-audit-list{max-height:230px;overflow:auto;border:1px solid var(--border,#e5e7eb);border-radius:12px}
+  .user-audit-item{padding:10px 12px;border-bottom:1px solid var(--border,#eef1f4)}
+  .user-audit-item:last-child{border-bottom:0}
+  .user-audit-item strong{font-size:12px}
+  .user-audit-item p{margin:3px 0 4px;font-size:12px;line-height:1.4}
+  .user-audit-item time{font-size:11px;color:var(--muted,#7b8491)}
+`;
+document.head.appendChild(userAuditStyle);
+
+document.addEventListener("click", (event) => {
+  const taskDelete = event.target.closest("[data-delete-task]");
+  if (taskDelete) {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteTaskWithAudit(taskDelete.dataset.deleteTask);
+    return;
+  }
+  const ticketDelete = event.target.closest("[data-delete-ticket]");
+  if (ticketDelete) {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteTicketWithAudit(ticketDelete.dataset.deleteTicket);
+    return;
+  }
+  const userCard = event.target.closest("[data-edit-user]");
+  if (userCard?.dataset.editUser) {
+    setTimeout(() => renderUserAuditHistory(userCard.dataset.editUser), 80);
+  }
+}, true);
+'''
+
+          if 'async function deleteTaskWithAudit' not in js:
+            js += audit_code
+          app.write_text(js)
+      - name: Commit changes
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/index.html CRM-Integral-IA-Andamentos-Importacao-Excel/app.js
+          git commit -m "feat: excluir tarefas e atendimentos com histórico por usuário" || exit 0
+          git push
