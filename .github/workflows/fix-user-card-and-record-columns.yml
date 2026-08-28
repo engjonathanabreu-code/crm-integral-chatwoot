@@ -1,0 +1,145 @@
+name: Fix user card opening and record columns
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-user-card-and-record-columns.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply CRM UI fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('CRM-Integral-IA-Andamentos-Importacao-Excel')
+          app_path = root / 'app.js'
+          css_path = root / 'style.css'
+          app = app_path.read_text()
+          css = css_path.read_text()
+
+          # Torna o card inteiro do usuário clicável sem atrapalhar botões/expansão do histórico.
+          old = 'return `<article class="user-admin-card user-admin-card-with-history">'
+          new = 'return `<article class="user-admin-card user-admin-card-with-history" data-user-card="${profile.id}" tabindex="0" role="button" aria-label="Abrir usuário ${escapeHtml(profile.nome || profile.apelido || \"Usuário\")}">'
+          if old in app:
+              app = app.replace(old, new, 1)
+
+          listener = r'''
+
+// O card inteiro do usuário abre o mesmo editor do botão "Editar usuário".
+// Elementos interativos internos (botões e histórico) continuam funcionando normalmente.
+document.addEventListener("click", (event) => {
+  const card = event.target.closest(".user-admin-card[data-user-card]");
+  if (!card) return;
+  if (event.target.closest("button, a, input, select, textarea, summary, details, label")) return;
+  const editButton = card.querySelector("[data-edit-user]");
+  if (editButton) editButton.click();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const card = event.target.closest(".user-admin-card[data-user-card]");
+  if (!card || event.target !== card) return;
+  event.preventDefault();
+  const editButton = card.querySelector("[data-edit-user]");
+  if (editButton) editButton.click();
+});
+'''
+          if 'data-user-card' in app and 'O card inteiro do usuário abre o mesmo editor' not in app:
+              app += listener
+
+          css_patch = r'''
+
+/* Ajuste 2026-08-28: cards de usuário clicáveis e linhas operacionais em colunas retas */
+.user-admin-card[data-user-card]{cursor:pointer;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.user-admin-card[data-user-card]:hover{border-color:color-mix(in srgb,var(--primary) 32%,var(--border));box-shadow:0 5px 18px rgba(15,23,42,.06)}
+.user-admin-card[data-user-card]:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.user-admin-card[data-user-card] .user-activity-history,
+.user-admin-card[data-user-card] button{cursor:pointer}
+
+/* Atendimentos e tarefas: cada informação ocupa sua própria coluna e nunca invade a vizinha. */
+#ticketsList .record-row,
+#tasksList .record-row{
+  display:grid;
+  grid-template-columns:minmax(270px,2.15fr) minmax(118px,.72fr) minmax(170px,1fr) minmax(240px,1.45fr) minmax(242px,1.22fr);
+  gap:18px;
+  align-items:center;
+  width:100%;
+}
+#ticketsList .record-row>div,
+#tasksList .record-row>div{min-width:0;max-width:100%}
+#ticketsList .record-row h4,
+#ticketsList .record-row p,
+#ticketsList .record-row span,
+#tasksList .record-row h4,
+#tasksList .record-row p,
+#tasksList .record-row span{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+#ticketsList .record-actions,
+#tasksList .record-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  align-items:stretch;
+  width:100%;
+  justify-self:stretch;
+}
+#tasksList .record-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+#ticketsList .record-actions .small-button,
+#tasksList .record-actions .small-button{
+  width:100%;
+  min-width:0;
+  height:34px;
+  padding:0 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+}
+
+@media (max-width:1180px){
+  #ticketsList .record-row,
+  #tasksList .record-row{
+    grid-template-columns:minmax(230px,1.8fr) minmax(110px,.7fr) minmax(150px,.9fr) minmax(210px,1.25fr) minmax(220px,1.1fr);
+    gap:12px;
+  }
+  #ticketsList .record-actions,
+  #tasksList .record-actions{grid-template-columns:1fr;gap:6px}
+}
+@media (max-width:860px){
+  #ticketsList .record-row,
+  #tasksList .record-row{grid-template-columns:1fr 1fr;align-items:start}
+  #ticketsList .record-actions,
+  #tasksList .record-actions{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:620px){
+  #ticketsList .record-row,
+  #tasksList .record-row{grid-template-columns:1fr}
+  #ticketsList .record-actions,
+  #tasksList .record-actions{grid-column:auto;grid-template-columns:1fr}
+}
+'''
+          if 'Ajuste 2026-08-28: cards de usuário clicáveis' not in css:
+              css += css_patch
+
+          app_path.write_text(app)
+          css_path.write_text(css)
+          PY
+      - name: Commit fixes
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/app.js CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "fix: abrir card de usuario e alinhar colunas operacionais" || exit 0
+          git push
