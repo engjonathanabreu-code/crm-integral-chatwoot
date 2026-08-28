@@ -1,0 +1,34 @@
+name: Fix CRM compact selector build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-crm-build-compact-selectors.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Align build patch with source HTML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
+          s = p.read_text()
+          old = 'Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente.'
+          new = 'Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente só por Admin ou por quem cadastrou o cliente.'
+          if old not in s:
+              raise SystemExit('Texto esperado do patch não encontrado em build.mjs')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit correction
+        run: |
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
+          git commit -m "fix: alinhar build aos seletores compactos atuais" || exit 0
+          git push
