@@ -227,7 +227,7 @@ if (!index.includes('client-mini-select')) {
             <small class="field-help">Admin, usuários do Comercial ou quem cadastrou o cliente podem atribuir/trocar o Comercial.</small>
           </label>
           <label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>
-            <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente.</small>
+            <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente só por Admin ou por quem cadastrou o cliente.</small>
           </label>`,
   `        <label class="admin-only hidden client-assignment-field">Dono do registro
             <select id="clientOwner" class="client-mini-select"></select>
