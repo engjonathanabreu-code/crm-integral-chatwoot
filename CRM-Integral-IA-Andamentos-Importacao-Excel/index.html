@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#131519" />
   <title>CRM Integral</title>
+  <link rel="icon" type="image/png" href="https://www.integralse.com.br/assets/logo.png" />
+  <link rel="apple-touch-icon" href="https://www.integralse.com.br/assets/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;800&display=swap" rel="stylesheet" />
@@ -725,6 +727,18 @@
           </div>
         </div>
       </div>
+
+      <section class="user-operational-history-panel">
+        <div class="user-operational-history-head">
+          <div>
+            <p class="eyebrow">Histórico interno do CRM</p>
+            <h3>Atendimentos e tarefas</h3>
+            <p class="muted">Registros criados por este usuário no CRM, incluindo itens já excluídos da lista operacional.</p>
+          </div>
+          <div id="resetPasswordOperationalStats" class="user-operational-history-stats"></div>
+        </div>
+        <div id="resetPasswordOperationalHistory" class="user-operational-history-list"></div>
+      </section>
       <p id="resetPasswordMessage" class="form-message"></p>
       <div class="dialog-actions">
         <div class="spacer"></div>
