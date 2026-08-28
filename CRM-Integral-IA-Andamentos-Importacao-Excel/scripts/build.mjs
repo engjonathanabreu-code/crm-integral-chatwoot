@@ -219,28 +219,30 @@ index = index.replace(
 );
 
 // Padroniza Dono do registro, Comercial e Agentes atribuídos como seletores compactos.
-index = replaceRequired(
-  index,
-`        <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
-        <label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>
-          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
-        </label>
-        <label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>
-          <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente.</small>
-        </label>`,
-`        <label class="admin-only hidden client-assignment-field">Dono do registro
-          <select id="clientOwner" class="client-mini-select"></select>
-        </label>
-        <label class="client-assignment-field">Comercial
-          <select id="clientComercial" class="client-mini-select"><option value="">Sem comercial atribuído</option></select>
-          <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
-        </label>
-        <label class="client-assignment-field">Agentes atribuídos
-          <select id="clientAgentsAssigned" class="client-mini-select client-agents-select" multiple size="1"></select>
-          <small class="field-help">Permite vários agentes. Clique no campo para abrir a lista; as atribuições automáticas continuam funcionando.</small>
-        </label>`,
-  "seletores compactos do cliente"
-);
+if (!index.includes('client-mini-select')) {
+  index = replaceRequired(
+    index,
+  `        <label class="admin-only hidden">Dono do registro<select id="clientOwner"></select></label>
+          <label>Comercial<select id="clientComercial"><option value="">Sem comercial atribuído</option></select>
+            <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+          </label>
+          <label class="span-two">Agentes atribuídos<select id="clientAgentsAssigned" multiple size="4"></select>
+            <small class="field-help">Cresce sozinho quando um agente registra um Atendimento (o agente + o Comercial entram na lista). Editável manualmente por Admin, usuários do Comercial ou por quem cadastrou o cliente.</small>
+          </label>`,
+  `        <label class="admin-only hidden client-assignment-field">Dono do registro
+            <select id="clientOwner" class="client-mini-select"></select>
+          </label>
+          <label class="client-assignment-field">Comercial
+            <select id="clientComercial" class="client-mini-select"><option value="">Sem comercial atribuído</option></select>
+            <small class="field-help">Só o Admin ou quem cadastrou o cliente pode atribuir/trocar o Comercial.</small>
+          </label>
+          <label class="client-assignment-field">Agentes atribuídos
+            <select id="clientAgentsAssigned" class="client-mini-select client-agents-select" multiple size="1"></select>
+            <small class="field-help">Permite vários agentes. Clique no campo para abrir a lista; as atribuições automáticas continuam funcionando.</small>
+          </label>`,
+    "seletores compactos do cliente"
+  );
+}
 
 const importStatusCard = `
         <article class="panel flat">
