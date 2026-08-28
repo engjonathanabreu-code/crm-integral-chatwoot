@@ -1550,10 +1550,12 @@ function setView(view) {
   $("pageDescription").textContent = description;
 }
 
-// Só o Admin ou quem cadastrou o cliente (created_by) pode
-// atribuir/trocar o Comercial responsável.
+// Admin, usuários do Comercial ou quem cadastrou o cliente podem
+// atribuir/trocar o Comercial responsável. O seletor continua listando
+// somente usuários ativos com perfil Comercial.
 function canAssignComercial(existingClient) {
   if (isAdmin()) return true;
+  if (state.profile?.perfil === "comercial" || state.profile?.setor === "Comercial") return true;
   if (!existingClient) return true; // cliente novo: quem está criando é o created_by
   return existingClient.created_by === state.user.id;
 }
