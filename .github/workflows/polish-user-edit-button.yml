@@ -1,0 +1,92 @@
+name: Polish user edit action
+on:
+  push:
+    paths:
+      - '.github/workflows/polish-user-edit-button.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refine user card action layout
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/style.css')
+          s = p.read_text()
+          marker = '/* Refinamento visual: ação Editar usuário padronizada */'
+          block = r'''
+
+/* Refinamento visual: ação Editar usuário padronizada */
+.user-admin-card-with-history{
+  display:flex;
+  flex-direction:column;
+  min-height:260px;
+}
+.user-admin-card-head{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 108px;
+  gap:14px;
+  align-items:start;
+}
+.user-admin-card-head>div:first-child{
+  min-width:0;
+}
+.user-card-head-actions{
+  width:108px;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
+  justify-items:stretch;
+  align-content:start;
+  flex:0 0 108px;
+}
+.user-card-head-actions .badge{
+  justify-self:end;
+  min-width:0;
+}
+.user-card-head-actions [data-edit-user]{
+  width:108px;
+  min-width:108px;
+  height:34px;
+  padding:0 10px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+  line-height:1;
+  border-radius:9px;
+  font-size:11.5px;
+  font-weight:650;
+}
+.user-admin-card-meta{
+  flex:1 1 auto;
+}
+.user-activity-history{
+  margin-top:auto;
+}
+@media(max-width:760px){
+  .user-admin-card-head{grid-template-columns:minmax(0,1fr) 104px}
+  .user-card-head-actions,.user-card-head-actions [data-edit-user]{width:104px;min-width:104px}
+}
+@media(max-width:420px){
+  .user-admin-card-head{grid-template-columns:1fr}
+  .user-card-head-actions{width:100%;grid-template-columns:auto 1fr;align-items:center}
+  .user-card-head-actions .badge{justify-self:start}
+  .user-card-head-actions [data-edit-user]{width:100%;min-width:0}
+}
+'''
+          if marker not in s:
+              s += block
+              p.write_text(s)
+          PY
+      - name: Commit styling
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/style.css
+          git commit -m "style: padronizar ação editar usuário nos cards"
+          git push
