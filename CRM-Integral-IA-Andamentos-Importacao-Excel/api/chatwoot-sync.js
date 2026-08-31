@@ -191,13 +191,19 @@ function titleCaseName(value) {
 function extractName(payload) {
   const attrs = customAttrs(payload);
   const c = getConversation(payload);
+  const isIncoming =
+    payload?.message_type === "incoming" ||
+    payload?.message_type === 0 ||
+    payload?.message_type === "0";
 
+  // Nunca usa o sender de uma mensagem de saída como nome do cliente:
+  // em mensagens enviadas pelo Chatwoot, sender é o próprio agente.
   const raw =
     attrs.ia_nome ||
-    payload?.sender?.name ||
     payload?.contact?.name ||
     c?.meta?.sender?.name ||
     c?.contact?.name ||
+    (isIncoming ? payload?.sender?.name : null) ||
     null;
 
   return raw ? titleCaseName(raw) : "Contato WhatsApp";
@@ -595,42 +601,87 @@ async function findOrCreateClient(payload) {
   const existing = await findClientByPhoneOrContact(phone, contactId);
 
   if (existing) {
-    try {
-      const data = await sb(`clientes?id=eq.${existing.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
+  // Cliente já cadastrado: atendimento posterior NÃO pode sobrescrever
+  // dados cadastrais existentes. A integração atualiza sempre apenas
+  // dados operacionais e usa IA/Chatwoot somente para preencher lacunas.
+  const existingPatch = {
+    chatwoot_last_conversation_id: conversationId,
+    ultimo_setor: extractSector(payload),
+    ultimo_agente: extractAgent(payload),
+    last_contact_at: new Date().toISOString(),
+  };
 
-      return data?.[0] || {
-        ...existing,
-        ...patch,
-      };
-    } catch (error) {
-      if (error.status !== 409) {
-        throw error;
-      }
+  const hasValue = (value) =>
+    value !== null && value !== undefined && String(value).trim() !== "";
 
-      // O chatwoot_contact_id desta mensagem já pertence a OUTRO cliente
-      // (contato duplicado no Chatwoot, mesmo telefone em dois registros
-      // etc.). Em vez de derrubar o webhook inteiro, atualizamos o cliente
-      // encontrado sem sobrescrever o vínculo de contato conflitante.
-      console.warn(
-        "CONFLITO DE chatwoot_contact_id AO ATUALIZAR CLIENTE EXISTENTE. Atualizando sem sobrescrever o vínculo do contato."
-      );
+  const currentName = String(existing.nome || "").trim();
+  const nameIsMissing =
+    !currentName || normalizeCompareKey(currentName) === "contato whatsapp";
 
-      const { chatwoot_contact_id, ...safePatch } = patch;
-
-      const data = await sb(`clientes?id=eq.${existing.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(safePatch),
-      });
-
-      return data?.[0] || {
-        ...existing,
-        ...safePatch,
-      };
-    }
+  if (nameIsMissing && nomeCliente && nomeCliente !== "Contato WhatsApp") {
+    existingPatch.nome = nomeCliente;
   }
+
+  const rawPhone = extractPhone(payload);
+  if (!hasValue(existing.telefone) && rawPhone) {
+    existingPatch.telefone = rawPhone;
+  }
+  if (!hasValue(existing.telefone_normalizado) && phone) {
+    existingPatch.telefone_normalizado = phone;
+  }
+
+  const municipioCandidato = cidadeRepeteNome
+    ? null
+    : await resolveCanonicalCity(cityState.cidade);
+  if (!hasValue(existing.municipio) && municipioCandidato) {
+    existingPatch.municipio = municipioCandidato;
+  }
+  if (!hasValue(existing.estado) && cityState.estado && !cidadeRepeteNome) {
+    existingPatch.estado = cityState.estado;
+  }
+
+  if (!hasValue(existing.origem)) {
+    existingPatch.origem = "WhatsApp";
+  }
+  if (!hasValue(existing.canal)) {
+    existingPatch.canal = "WhatsApp";
+  }
+  if (!hasValue(existing.chatwoot_contact_id) && contactId) {
+    existingPatch.chatwoot_contact_id = contactId;
+  }
+
+  try {
+    const data = await sb(`clientes?id=eq.${existing.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(existingPatch),
+    });
+
+    return data?.[0] || {
+      ...existing,
+      ...existingPatch,
+    };
+  } catch (error) {
+    if (error.status !== 409) {
+      throw error;
+    }
+
+    console.warn(
+      "CONFLITO DE chatwoot_contact_id AO ATUALIZAR CLIENTE EXISTENTE. Atualizando sem sobrescrever o vínculo do contato."
+    );
+
+    const { chatwoot_contact_id, ...safePatch } = existingPatch;
+
+    const data = await sb(`clientes?id=eq.${existing.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(safePatch),
+    });
+
+    return data?.[0] || {
+      ...existing,
+      ...safePatch,
+    };
+  }
+}
 
   try {
     const created = await sb("clientes", {
