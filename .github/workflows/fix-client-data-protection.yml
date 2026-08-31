@@ -19,6 +19,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           path = Path('CRM-Integral-IA-Andamentos-Importacao-Excel/api/chatwoot-sync.js')
           text = path.read_text()
@@ -59,53 +60,15 @@ jobs:
             return raw ? titleCaseName(raw) : "Contato WhatsApp";
           }'''
 
-          if old_name not in text:
+          if old_name in text:
+            text = text.replace(old_name, new_name, 1)
+          elif new_name not in text:
             raise SystemExit('Bloco extractName esperado não encontrado; abortando sem alterar arquivo.')
-          text = text.replace(old_name, new_name, 1)
-
-          old_existing = '''  if (existing) {
-            try {
-              const data = await sb(`clientes?id=eq.${existing.id}`, {
-                method: "PATCH",
-                body: JSON.stringify(patch),
-              });
-
-              return data?.[0] || {
-                ...existing,
-                ...patch,
-              };
-            } catch (error) {
-              if (error.status !== 409) {
-                throw error;
-              }
-
-              // O chatwoot_contact_id desta mensagem já pertence a OUTRO cliente
-              // (contato duplicado no Chatwoot, mesmo telefone em dois registros
-              // etc.). Em vez de derrubar o webhook inteiro, atualizamos o cliente
-              // encontrado sem sobrescrever o vínculo de contato conflitante.
-              console.warn(
-                "CONFLITO DE chatwoot_contact_id AO ATUALIZAR CLIENTE EXISTENTE. Atualizando sem sobrescrever o vínculo do contato."
-              );
-
-              const { chatwoot_contact_id, ...safePatch } = patch;
-
-              const data = await sb(`clientes?id=eq.${existing.id}`, {
-                method: "PATCH",
-                body: JSON.stringify(safePatch),
-              });
-
-              return data?.[0] || {
-                ...existing,
-                ...safePatch,
-              };
-            }
-          }'''
 
           new_existing = '''  if (existing) {
             // Cliente já cadastrado: atendimento posterior NÃO pode sobrescrever
             // dados cadastrais existentes. A integração atualiza sempre apenas
-            // os dados operacionais abaixo e usa a IA/Chatwoot somente para
-            // preencher lacunas do cadastro.
+            // dados operacionais e usa IA/Chatwoot somente para preencher lacunas.
             const existingPatch = {
               chatwoot_last_conversation_id: conversationId,
               ultimo_setor: extractSector(payload),
@@ -167,8 +130,6 @@ jobs:
                 throw error;
               }
 
-              // Se o vínculo do contato conflitar com outro cadastro, mantém o
-              // cliente localizado e atualiza apenas os demais campos seguros.
               console.warn(
                 "CONFLITO DE chatwoot_contact_id AO ATUALIZAR CLIENTE EXISTENTE. Atualizando sem sobrescrever o vínculo do contato."
               );
@@ -187,9 +148,15 @@ jobs:
             }
           }'''
 
-          if old_existing not in text:
-            raise SystemExit('Bloco de atualização de cliente existente esperado não encontrado; abortando sem alterar arquivo.')
-          text = text.replace(old_existing, new_existing, 1)
+          if 'const existingPatch = {' not in text:
+            pattern = re.compile(
+              r'  if \(existing\) \{.*?\n  \}\n\n  try \{\n    const created = await sb\("clientes"',
+              re.S,
+            )
+            replacement = new_existing + '\n\n  try {\n    const created = await sb("clientes"'
+            text, count = pattern.subn(replacement, text, count=1)
+            if count != 1:
+              raise SystemExit(f'Bloco de atualização de cliente existente não localizado de forma segura: {count}')
 
           path.write_text(text)
       - name: Commit source fix
