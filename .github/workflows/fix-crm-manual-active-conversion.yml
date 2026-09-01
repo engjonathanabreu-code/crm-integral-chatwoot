@@ -1,0 +1,61 @@
+name: Fix CRM manual active conversion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-crm-manual-active-conversion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Count only manually activated clients in conversion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('CRM-Integral-IA-Andamentos-Importacao-Excel/crm-dashboard-analytics.js')
+          s=p.read_text()
+
+          old="""    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles] = await Promise.all([\n      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles')\n    ]);\n    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles };"""
+          new="""    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico] = await Promise.all([\n      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles'), safe('historico')\n    ]);\n    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico };"""
+          if old in s:
+              s=s.replace(old,new,1)
+          elif "safe('historico')" not in s:
+              raise SystemExit('Bloco load não encontrado')
+
+          marker="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }\n"""
+          helper="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }\n\n  function manualActiveHistory(data, clientId) {\n    const rows=(data.historico || []).filter(h => String(h.cliente_id) === String(clientId));\n    return rows.find(h => {\n      if (!h.created_by) return false;\n      if (norm(h.tipo) !== 'dados atualizados') return false;\n      const text=norm(h.descricao || '');\n      return text.includes('status') && text.includes('cliente ativo');\n    }) || null;\n  }\n\n  function isManuallyActivatedClient(client, data) {\n    if (!/cliente ativo/i.test(String(client?.status || ''))) return false;\n    return !!manualActiveHistory(data, client.id);\n  }\n"""
+          if marker in s and 'function isManuallyActivatedClient' not in s:
+              s=s.replace(marker,helper,1)
+
+          old="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const won=s.clients.filter(c=>/cliente ativo/i.test(String(c.status||''))).length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
+          new="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const manuallyWon=s.clients.filter(c=>isManuallyActivatedClient(c,data));\n    const won=manuallyWon.length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
+          if old in s:
+              s=s.replace(old,new,1)
+          elif 'const manuallyWon=' not in s:
+              raise SystemExit('Cálculo de conversão não encontrado')
+
+          s=s.replace('<small>ativos ÷ ativos + perdidos</small>', '<small>ativos manuais ÷ ativos manuais + perdidos</small>', 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          if git diff --quiet; then
+            echo "Already patched"
+            exit 0
+          fi
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/crm-dashboard-analytics.js
+          git commit -m "fix: conversao conta apenas clientes ativados manualmente [skip ci]"
+          git push
