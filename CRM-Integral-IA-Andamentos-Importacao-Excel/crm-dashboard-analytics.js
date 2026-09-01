@@ -55,8 +55,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
     return rows.find(h => {
       if (!h.created_by) return false;
       if (norm(h.tipo) !== 'dados atualizados') return false;
-      const text=norm(h.descricao || '');
-      return text.includes('status') && text.includes('cliente ativo');
+      const text=String(h.descricao || '');
+      return /Status:\s*(?!Cliente Ativo\b)[^\n→]+\s*→\s*Cliente Ativo\b/i.test(text);
     }) || null;
   }
 
