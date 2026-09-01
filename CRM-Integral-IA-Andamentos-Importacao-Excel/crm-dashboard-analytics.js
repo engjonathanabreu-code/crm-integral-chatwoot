@@ -36,10 +36,10 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
   async function load() {
     const { data: sess } = await sb.auth.getSession();
     if (!sess?.session) return null;
-    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles] = await Promise.all([
-      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles')
+    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico] = await Promise.all([
+      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles'), safe('historico')
     ]);
-    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles };
+    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico };
   }
 
   function projectForClient(c, projects) { return projects.find(p => String(p.id) === String(c.projeto_id)); }
@@ -49,6 +49,21 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
   function taskDone(t) { return !!(t.concluida || t.concluido || /conclu|feito/i.test(String(t.status || ''))); }
   function clientValue(c) { return Number(c.valor_estimado || c.valor || c.valor_contrato || 0); }
   function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }
+
+  function manualActiveHistory(data, clientId) {
+    const rows=(data.historico || []).filter(h => String(h.cliente_id) === String(clientId));
+    return rows.find(h => {
+      if (!h.created_by) return false;
+      if (norm(h.tipo) !== 'dados atualizados') return false;
+      const text=norm(h.descricao || '');
+      return text.includes('status') && text.includes('cliente ativo');
+    }) || null;
+  }
+
+  function isManuallyActivatedClient(client, data) {
+    if (!/cliente ativo/i.test(String(client?.status || ''))) return false;
+    return !!manualActiveHistory(data, client.id);
+  }
 
   function filters(data) {
     const municipios = [...new Set(data.clientes.map(c => municipioOfClient(c, data.projetos)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
@@ -132,7 +147,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
     const negotiation=s.clients.filter(c=>/negocia|proposta|contato feito/i.test(String(c.status||'')));
     const pipeline=sum(negotiation,clientValue);
     const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;
-    const won=s.clients.filter(c=>/cliente ativo/i.test(String(c.status||''))).length;
+    const manuallyWon=s.clients.filter(c=>isManuallyActivatedClient(c,data));
+    const won=manuallyWon.length;
     const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;
     const series=monthlySeries(s.tickets,s.clients), maxSeries=Math.max(1,...series.flatMap(x=>[x.atend,x.novos]));
     const sectorCounts=Object.entries(s.tickets.reduce((a,t)=>{const k=sectorOfTicket(t);a[k]=(a[k]||0)+1;return a},{})).sort((a,b)=>b[1]-a[1]);
@@ -159,7 +175,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
         <button class="ba-kpi ${openTickets?'attention':''}" data-go="atendimentos"><span>Atendimentos abertos</span><strong>${num(openTickets)}</strong><small>de ${num(s.tickets.length)} no período</small></button>
         <button class="ba-kpi ${pendingTasks?'attention':''}" data-go="tarefas"><span>Tarefas pendentes</span><strong>${num(pendingTasks)}</strong><small>ações em aberto</small></button>
         <button class="ba-kpi" data-go="projetos"><span>Projetos ativos</span><strong>${num(activeProjects)}</strong><small>${num(s.projects.length)} no recorte</small></button>
-        <button class="ba-kpi"><span>Conversão comercial</span><strong>${conversion}%</strong><small>ativos ÷ ativos + perdidos</small></button>
+        <button class="ba-kpi"><span>Conversão comercial</span><strong>${conversion}%</strong><small>ativos manuais ÷ ativos manuais + perdidos</small></button>
       </div>
       <div class="ba-grid ba-grid-main">
         <section class="ba-panel ba-span-2"><div class="ba-panel-head"><div><span>EVOLUÇÃO</span><h3>Atividade do CRM</h3></div><small>Atendimentos × novos clientes</small></div><div class="ba-chart">${series.map(m=>`<div class="ba-chart-col"><div class="ba-bars"><i style="height:${Math.max(4,m.atend/maxSeries*130)}px" title="${m.atend} atendimentos"></i><i class="secondary-bar" style="height:${Math.max(4,m.novos/maxSeries*130)}px" title="${m.novos} clientes"></i></div><b>${esc(m.label)}</b><small>${m.atend}/${m.novos}</small></div>`).join('')}</div><div class="ba-legend"><span><i></i> Atendimentos</span><span><i class="secondary-bar"></i> Novos clientes</span></div></section>
