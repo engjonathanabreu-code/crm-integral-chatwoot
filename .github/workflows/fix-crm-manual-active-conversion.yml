@@ -33,9 +33,14 @@ jobs:
               raise SystemExit('Bloco load não encontrado')
 
           marker="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }\n"""
-          helper="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }\n\n  function manualActiveHistory(data, clientId) {\n    const rows=(data.historico || []).filter(h => String(h.cliente_id) === String(clientId));\n    return rows.find(h => {\n      if (!h.created_by) return false;\n      if (norm(h.tipo) !== 'dados atualizados') return false;\n      const text=norm(h.descricao || '');\n      return text.includes('status') && text.includes('cliente ativo');\n    }) || null;\n  }\n\n  function isManuallyActivatedClient(client, data) {\n    if (!/cliente ativo/i.test(String(client?.status || ''))) return false;\n    return !!manualActiveHistory(data, client.id);\n  }\n"""
+          helper="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }\n\n  function manualActiveHistory(data, clientId) {\n    const rows=(data.historico || []).filter(h => String(h.cliente_id) === String(clientId));\n    return rows.find(h => {\n      if (!h.created_by) return false;\n      if (norm(h.tipo) !== 'dados atualizados') return false;\n      const text=String(h.descricao || '');\n      return /Status:\\s*(?!Cliente Ativo\\b)[^\\n→]+\\s*→\\s*Cliente Ativo\\b/i.test(text);\n    }) || null;\n  }\n\n  function isManuallyActivatedClient(client, data) {\n    if (!/cliente ativo/i.test(String(client?.status || ''))) return false;\n    return !!manualActiveHistory(data, client.id);\n  }\n"""
           if marker in s and 'function isManuallyActivatedClient' not in s:
               s=s.replace(marker,helper,1)
+
+          old_helper="""      const text=norm(h.descricao || '');\n      return text.includes('status') && text.includes('cliente ativo');"""
+          new_helper="""      const text=String(h.descricao || '');\n      return /Status:\\s*(?!Cliente Ativo\\b)[^\\n→]+\\s*→\\s*Cliente Ativo\\b/i.test(text);"""
+          if old_helper in s:
+              s=s.replace(old_helper,new_helper,1)
 
           old="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const won=s.clients.filter(c=>/cliente ativo/i.test(String(c.status||''))).length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
           new="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const manuallyWon=s.clients.filter(c=>isManuallyActivatedClient(c,data));\n    const won=manuallyWon.length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
@@ -57,5 +62,5 @@ jobs:
           git config user.name "Integral Automation"
           git config user.email "actions@users.noreply.github.com"
           git add CRM-Integral-IA-Andamentos-Importacao-Excel/crm-dashboard-analytics.js
-          git commit -m "fix: conversao conta apenas clientes ativados manualmente [skip ci]"
+          git commit -m "fix: conversao exige mudanca manual para Cliente Ativo [skip ci]"
           git push
