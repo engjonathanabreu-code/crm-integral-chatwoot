@@ -1,0 +1,67 @@
+name: Fix CRM Manual Conversion Metric
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-crm-conversion-manual-active.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Ajustar métrica de conversão
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('CRM-Integral-IA-Andamentos-Importacao-Excel/crm-dashboard-analytics.js')
+          s=p.read_text()
+
+          old="""    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles] = await Promise.all([\n      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles')\n    ]);\n    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles };"""
+          new="""    const [clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico] = await Promise.all([\n      safe('clientes'), safe('atendimentos'), safe('tarefas'), safe('projetos'), safe('andamentos'), safe('profiles'), safe('historico')\n    ]);\n    return { clientes, atendimentos, tarefas, projetos, andamentos, profiles, historico };"""
+          if old not in s: raise SystemExit('bloco load não encontrado')
+          s=s.replace(old,new,1)
+
+          marker="""  function isActiveProject(p) { return p.ativo !== false && !/inativ|conclu|cancel/i.test(String(p.status || '')); }"""
+          addition="""
+  function manualActiveConversion(client, data) {
+    if (!/cliente ativo/i.test(String(client?.status || ''))) return false;
+    return (data.historico || []).some(h => {
+      if (String(h.cliente_id || '') !== String(client.id || '')) return false;
+      const desc = String(h.descricao || '');
+      // Só conta quando houve mudança explícita, feita no CRM, de outro status para Cliente Ativo.
+      // Clientes criados/importados já como Cliente Ativo não têm essa transição e ficam fora da conversão.
+      return /Status:\s*(?!Cliente Ativo\b)[^\n→]+\s*→\s*Cliente Ativo\b/i.test(desc);
+    });
+  }
+"""
+          if marker not in s: raise SystemExit('marcador helper não encontrado')
+          s=s.replace(marker,marker+addition,1)
+
+          old2="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const won=s.clients.filter(c=>/cliente ativo/i.test(String(c.status||''))).length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
+          new2="""    const lost=s.clients.filter(c=>/perdido/i.test(String(c.status||''))).length;\n    const won=s.clients.filter(c=>manualActiveConversion(c,data)).length;\n    const conversion=(won+lost)?Math.round(won/(won+lost)*100):0;"""
+          if old2 not in s: raise SystemExit('bloco conversão não encontrado')
+          s=s.replace(old2,new2,1)
+
+          old3='<button class="ba-kpi"><span>Conversão comercial</span><strong>${conversion}%</strong><small>ativos ÷ ativos + perdidos</small></button>'
+          new3='<button class="ba-kpi"><span>Conversão comercial</span><strong>${conversion}%</strong><small>${won} convertido(s) manualmente · exclui importados já ativos</small></button>'
+          if old3 not in s: raise SystemExit('rótulo da conversão não encontrado')
+          s=s.replace(old3,new3,1)
+
+          p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'Integral Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/crm-dashboard-analytics.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: considerar só conversões manuais para Cliente Ativo [skip ci]'
+          git push origin main
