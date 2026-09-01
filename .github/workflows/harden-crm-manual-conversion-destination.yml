@@ -1,5 +1,6 @@
 name: Harden CRM Manual Conversion Destination
 
+# Executa a correção sobre o dashboard já publicado.
 on:
   push:
     branches: [main]
