@@ -1,0 +1,60 @@
+name: Install CRM Business Analytics Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-crm-dashboard-analytics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch build pipeline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
+          s=p.read_text()
+          old='for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js"]) {'
+          new='for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js", "crm-dashboard-analytics.css", "crm-dashboard-analytics.js"]) {'
+          if old in s:
+              s=s.replace(old,new,1)
+          elif '"crm-dashboard-analytics.js"' not in s:
+              raise SystemExit('Lista de arquivos do build não encontrada')
+
+          old_css='index = index.replace("</head>", \'  <link rel="stylesheet" href="./weekly.css">\\n</head>\');'
+          new_css='index = index.replace("</head>", \'  <link rel="stylesheet" href="./weekly.css">\\n  <link rel="stylesheet" href="./crm-dashboard-analytics.css?v=1">\\n</head>\');'
+          if old_css in s:
+              s=s.replace(old_css,new_css,1)
+          elif 'crm-dashboard-analytics.css' not in s:
+              raise SystemExit('Injeção de CSS não encontrada')
+
+          old_body='index = index.replace("</body>", `${weeklyLoader}\\n</body>`);'
+          new_body='index = index.replace("</body>", `${weeklyLoader}\\n  <script type="module" src="./crm-dashboard-analytics.js?v=1"></script>\\n</body>`);'
+          if old_body in s:
+              s=s.replace(old_body,new_body,1)
+          elif 'crm-dashboard-analytics.js?v=1' not in s:
+              raise SystemExit('Injeção de JS não encontrada')
+
+          p.write_text(s)
+          PY
+      - name: Commit patched build
+        run: |
+          if git diff --quiet; then
+            echo "Build already patched"
+            exit 0
+          fi
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
+          git commit -m "feat: ativa dashboard interativo de Business Analytics no CRM [skip ci]"
+          git push
