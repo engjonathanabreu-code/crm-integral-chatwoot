@@ -11,10 +11,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const slaStyle = document.createElement("link");
   slaStyle.rel = "stylesheet";
-  slaStyle.href = "./crm-sla.css?v=20260902a";
+  slaStyle.href = "./funil-sla-manual.css?v=20260902b";
   document.head.appendChild(slaStyle);
 
   import("./commercial-assignment-patch.js?v=20260828a").catch((error) => console.error("Falha ao carregar permissão Comercial", error));
   import("./projeto-metas-erp.js?v=20260902a").catch((error) => console.error("Falha ao carregar metas dos projetos", error));
-  import("./crm-sla.js?v=20260902a").catch((error) => console.error("Falha ao carregar SLA do CRM", error));
+  import("./funil-sla-manual.js?v=20260902b").catch((error) => console.error("Falha ao carregar SLA opcional do Funil", error));
 });
