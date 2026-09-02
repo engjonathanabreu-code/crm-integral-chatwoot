@@ -1,0 +1,59 @@
+name: Install CRM Message Insights
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-crm-message-insights.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch build pipeline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs')
+          s=p.read_text()
+          old='for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js", "crm-dashboard-analytics.css", "crm-dashboard-analytics.js"]) {'
+          new='for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js", "crm-dashboard-analytics.css", "crm-dashboard-analytics.js", "crm-message-insights.css", "crm-message-insights.js"]) {'
+          if old in s:
+              s=s.replace(old,new,1)
+          elif '"crm-message-insights.js"' not in s:
+              raise SystemExit('Lista de arquivos do build não encontrada')
+
+          old_head='index = index.replace("</head>", \'  <link rel="stylesheet" href="./weekly.css">\\n  <link rel="stylesheet" href="./crm-dashboard-analytics.css?v=1">\\n</head>\');'
+          new_head='index = index.replace("</head>", \'  <link rel="stylesheet" href="./weekly.css">\\n  <link rel="stylesheet" href="./crm-dashboard-analytics.css?v=1">\\n  <link rel="stylesheet" href="./crm-message-insights.css?v=1">\\n</head>\');'
+          if old_head in s:
+              s=s.replace(old_head,new_head,1)
+          elif 'crm-message-insights.css?v=1' not in s:
+              raise SystemExit('Injeção de CSS não encontrada')
+
+          marker='index = index.replace("</body>", `${weeklyLoader}\\n  <script type="module" src="./crm-dashboard-analytics.js?v=1"></script>\\n</body>`);'
+          replacement='index = index.replace("</body>", `${weeklyLoader}\\n  <script type="module" src="./crm-dashboard-analytics.js?v=1"></script>\\n  <script type="module" src="./crm-message-insights.js?v=1"></script>\\n</body>`);'
+          if marker in s:
+              s=s.replace(marker,replacement,1)
+          elif 'crm-message-insights.js?v=1' not in s:
+              raise SystemExit('Injeção de JS não encontrada')
+          p.write_text(s)
+          PY
+      - name: Commit patched build
+        run: |
+          if git diff --quiet; then
+            echo "Build already patched"
+            exit 0
+          fi
+          git config user.name "Integral Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add CRM-Integral-IA-Andamentos-Importacao-Excel/scripts/build.mjs
+          git commit -m "feat: ativa insights de mensagens e origem no dashboard [skip ci]"
+          git push
