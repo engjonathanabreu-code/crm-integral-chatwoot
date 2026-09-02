@@ -1,0 +1,10 @@
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+const cfg=window.CRM_CONFIG||{};
+if(cfg.supabaseUrl&&cfg.supabaseAnonKey&&!cfg.supabaseUrl.includes('COLE_AQUI')){
+  const sb=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true}});
+  let map=new Map(),busy=false,last=0;
+  async function load(force=false){if(busy||(!force&&Date.now()-last<30000))return;busy=true;try{const {data,error}=await sb.from('clientes').select('id,sla_prazo');if(error)throw error;map=new Map((data||[]).map(x=>[x.id,x.sla_prazo||'']));last=Date.now();decorate();}catch(e){console.warn('SLA manual do funil',e)}finally{busy=false}}
+  function decorate(){document.querySelectorAll('#pipelineBoard .kanban-card').forEach(card=>{if(card.querySelector('.funil-sla-editor'))return;const open=card.querySelector('[data-open-client]');const id=open?.dataset.openClient;if(!id)return;const wrap=document.createElement('label');wrap.className='funil-sla-editor';wrap.innerHTML=`<span>SLA</span><input type="date" value="${map.get(id)||''}" aria-label="Prazo de SLA opcional">`;const input=wrap.querySelector('input');input.addEventListener('click',e=>e.stopPropagation());input.addEventListener('change',async e=>{e.stopPropagation();const value=input.value||null;input.disabled=true;const {error}=await sb.from('clientes').update({sla_prazo:value,updated_at:new Date().toISOString()}).eq('id',id);input.disabled=false;if(error){console.error(error);input.value=map.get(id)||'';return;}map.set(id,value||'');wrap.classList.add('saved');setTimeout(()=>wrap.classList.remove('saved'),900);});card.appendChild(wrap);});}
+  let q=false;function reconcile(){if(q)return;q=true;requestAnimationFrame(()=>{q=false;decorate();if(document.querySelector('#pipelineBoard'))load();});}
+  new MutationObserver(reconcile).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',()=>load(true));setInterval(()=>load(),60000);
+}
