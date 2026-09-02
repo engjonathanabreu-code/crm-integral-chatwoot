@@ -14,7 +14,7 @@ function replaceRequired(source, before, after, label) {
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
-for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js", "crm-dashboard-analytics.css", "crm-dashboard-analytics.js"]) {
+for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-approvals.js", "crm-dashboard-analytics.css", "crm-dashboard-analytics.js", "crm-message-insights.css", "crm-message-insights.js"]) {
   await cp(resolve(root, file), resolve(out, file));
 }
 
@@ -260,7 +260,7 @@ index = replaceRequired(
   `        </article>${importStatusCard}\n      </div>\n\n      <div id="clientImportSummary"`,
   "card de status da importação"
 );
-index = index.replace("</head>", '  <link rel="stylesheet" href="./weekly.css">\n  <link rel="stylesheet" href="./crm-dashboard-analytics.css?v=1">\n</head>');
+index = index.replace("</head>", '  <link rel="stylesheet" href="./weekly.css">\n  <link rel="stylesheet" href="./crm-dashboard-analytics.css?v=1">\n  <link rel="stylesheet" href="./crm-message-insights.css?v=1">\n</head>');
 
 const weeklyLoader = `
   <script type="module">
@@ -296,7 +296,7 @@ const weeklyLoader = `
     })();
   </script>`;
 
-index = index.replace("</body>", `${weeklyLoader}\n  <script type="module" src="./crm-dashboard-analytics.js?v=1"></script>\n</body>`);
+index = index.replace("</body>", `${weeklyLoader}\n  <script type="module" src="./crm-dashboard-analytics.js?v=1"></script>\n  <script type="module" src="./crm-message-insights.js?v=1"></script>\n</body>`);
 await writeFile(resolve(out, "index.html"), index, "utf8");
 
 let style = await readFile(resolve(out, "style.css"), "utf8");
