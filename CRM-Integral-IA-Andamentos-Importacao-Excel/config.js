@@ -10,4 +10,5 @@ window.addEventListener("DOMContentLoaded", () => {
   document.head.appendChild(userCardPolish);
 
   import("./commercial-assignment-patch.js?v=20260828a").catch((error) => console.error("Falha ao carregar permissão Comercial", error));
+  import("./projeto-metas-erp.js?v=20260902a").catch((error) => console.error("Falha ao carregar metas dos projetos", error));
 });
