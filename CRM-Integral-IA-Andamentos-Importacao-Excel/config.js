@@ -9,6 +9,12 @@ window.addEventListener("DOMContentLoaded", () => {
   userCardPolish.href = "./user-card-polish.css?v=20260828a";
   document.head.appendChild(userCardPolish);
 
+  const slaStyle = document.createElement("link");
+  slaStyle.rel = "stylesheet";
+  slaStyle.href = "./crm-sla.css?v=20260902a";
+  document.head.appendChild(slaStyle);
+
   import("./commercial-assignment-patch.js?v=20260828a").catch((error) => console.error("Falha ao carregar permissão Comercial", error));
   import("./projeto-metas-erp.js?v=20260902a").catch((error) => console.error("Falha ao carregar metas dos projetos", error));
+  import("./crm-sla.js?v=20260902a").catch((error) => console.error("Falha ao carregar SLA do CRM", error));
 });
