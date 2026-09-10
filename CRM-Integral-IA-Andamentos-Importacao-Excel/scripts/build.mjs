@@ -188,7 +188,9 @@ app = replaceRequired(
 
 app = replaceIfMissing(
   app,
-  "renderAdditionalClientNames();",
+  `function openNewClient() {
+  $("clientForm").reset();
+  renderAdditionalClientNames();`,
 `function openNewClient() {
   $("clientForm").reset();`,
 `function openNewClient() {
