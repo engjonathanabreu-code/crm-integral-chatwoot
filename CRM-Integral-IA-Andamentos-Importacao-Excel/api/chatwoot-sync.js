@@ -230,6 +230,36 @@ function normalizeCompareKey(value) {
   return stripAccents(String(value || "").trim().toLowerCase()).replace(/\s+/g, " ");
 }
 
+function stripInternalClientPrefix(value) {
+  return String(value || "")
+    .replace(/^\s*\[[^\]]+\]\s*/g, "")
+    .replace(/^\s*[A-Z]{2,}[A-Z0-9]*\d+[A-Z0-9]*(?:[_./-]\d+)?\s*[-–—_:|]\s*/i, "")
+    .replace(/^\s*[A-Z]{2,}[A-Z0-9]*\d+[A-Z0-9]*\s+/i, "")
+    .trim();
+}
+
+function normalizeClientPersonName(value) {
+  return normalizeCompareKey(stripInternalClientPrefix(value))
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function clientNameKeys(value) {
+  const names = String(value || "")
+    .split(";")
+    .map(normalizeClientPersonName)
+    .filter(Boolean);
+  return [...new Set(names)];
+}
+
+function clientNameMatches(storedName, incomingName) {
+  const incomingKeys = clientNameKeys(incomingName);
+  if (!incomingKeys.length) return false;
+  const storedKeys = clientNameKeys(storedName);
+  return storedKeys.some((storedKey) => incomingKeys.includes(storedKey));
+}
+
 // Separa "Ilhota SC", "Ilhota/SC", "Ilhota - SC" em { cidade: "Ilhota",
 // estado: "SC" }. Fica atento a município composto (várias palavras
 // antes da sigla, ex.: "Rio do Sul SC", "São Bento do Sul SC") — só
@@ -536,6 +566,30 @@ async function findClientByPhoneOrContact(phone, contactId) {
   return null;
 }
 
+async function findClientByName(nomeCliente) {
+  if (!nomeCliente || normalizeCompareKey(nomeCliente) === "contato whatsapp") {
+    return null;
+  }
+
+  const candidates = await sb(
+    "clientes?select=id,nome,telefone,telefone_normalizado,email,municipio,estado,origem,canal,chatwoot_contact_id,chatwoot_last_conversation_id,projeto_id&nome=not.is.null&limit=1000"
+  );
+
+  const matches = (candidates || []).filter((client) =>
+    clientNameMatches(client.nome, nomeCliente)
+  );
+
+  if (matches.length === 1) return matches[0];
+
+  if (matches.length > 1) {
+    console.warn(
+      "BUSCA POR NOME IGNORADA: mais de um cliente compatível sem considerar prefixo."
+    );
+  }
+
+  return null;
+}
+
 async function findOrCreateClient(payload) {
   const phone = normalizePhone(extractPhone(payload));
   const ownerId = process.env.CRM_INTEGRATION_OWNER_ID;
@@ -598,7 +652,9 @@ async function findOrCreateClient(payload) {
     patch.estado = cityState.estado;
   }
 
-  const existing = await findClientByPhoneOrContact(phone, contactId);
+  const existing =
+    await findClientByPhoneOrContact(phone, contactId) ||
+    await findClientByName(nomeCliente);
 
   if (existing) {
   // Cliente já cadastrado: atendimento posterior NÃO pode sobrescrever
