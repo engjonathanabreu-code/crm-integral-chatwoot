@@ -11,6 +11,11 @@ function replaceRequired(source, before, after, label) {
   return source.replace(before, after);
 }
 
+function replaceIfMissing(source, marker, before, after, label) {
+  if (source.includes(marker)) return source;
+  return replaceRequired(source, before, after, label);
+}
+
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
@@ -19,6 +24,85 @@ for (const file of ["style.css", "app.js", "weekly.css", "weekly.js", "weekly-ap
 }
 
 let app = await readFile(resolve(out, "app.js"), "utf8");
+
+app = replaceIfMissing(
+  app,
+  "function clientNamesFromForm()",
+`function titleCaseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+function friendlyErrorMessage(error) {`,
+`function titleCaseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+function splitClientNames(value) {
+  return String(value || "")
+    .split(";")
+    .map((name) => titleCaseName(name))
+    .filter(Boolean);
+}
+
+function joinClientNames(names) {
+  const seen = new Set();
+  return names
+    .map((name) => titleCaseName(name))
+    .filter(Boolean)
+    .filter((name) => {
+      const key = normalizeCityKey(name);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join("; ");
+}
+
+function renderAdditionalClientNames(names = []) {
+  const container = $("additionalClientNames");
+  if (!container) return;
+  container.innerHTML = names.map((name) => \`
+    <div class="additional-client-name-row">
+      <input class="additional-client-name-input" value="\${escapeHtml(name)}" placeholder="Nome de outra pessoa neste mesmo card" />
+      <button type="button" class="icon-button remove-client-name" title="Remover pessoa">×</button>
+    </div>
+  \`).join("");
+}
+
+function setClientNamesField(value) {
+  const names = splitClientNames(value);
+  $("clientName").value = names[0] || "";
+  renderAdditionalClientNames(names.slice(1));
+}
+
+function addClientNameField(value = "") {
+  const container = $("additionalClientNames");
+  if (!container) return;
+  container.insertAdjacentHTML("beforeend", \`
+    <div class="additional-client-name-row">
+      <input class="additional-client-name-input" value="\${escapeHtml(value)}" placeholder="Nome de outra pessoa neste mesmo card" />
+      <button type="button" class="icon-button remove-client-name" title="Remover pessoa">×</button>
+    </div>
+  \`);
+  container.lastElementChild?.querySelector("input")?.focus();
+}
+
+function clientNamesFromForm() {
+  return joinClientNames([
+    $("clientName").value,
+    ...[...document.querySelectorAll(".additional-client-name-input")].map((input) => input.value),
+  ]);
+}
+
+function friendlyErrorMessage(error) {`,
+  "múltiplos nomes no cadastro"
+);
 
 // A importação em massa deve usar o mesmo Status do card de cliente.
 app = replaceRequired(
@@ -100,6 +184,37 @@ app = replaceRequired(
   if ($("clientCivilStatus")) $("clientCivilStatus").value = client.estado_civil || "";
   $("clientSource").value = client.origem || "Indicação";`,
   "limpeza do código ao alternar clientes"
+);
+
+app = replaceIfMissing(
+  app,
+  "renderAdditionalClientNames();",
+`function openNewClient() {
+  $("clientForm").reset();`,
+`function openNewClient() {
+  $("clientForm").reset();
+  renderAdditionalClientNames();`,
+  "limpeza de nomes adicionais ao criar cliente"
+);
+
+app = replaceIfMissing(
+  app,
+  "setClientNamesField(client.nome || \"\")",
+`  $("clientFormTitle").textContent = "Editar cliente";
+  $("clientName").value = client.nome || "";`,
+`  $("clientFormTitle").textContent = "Editar cliente";
+  setClientNamesField(client.nome || "");`,
+  "exibir nomes adicionais ao editar cliente"
+);
+
+app = replaceIfMissing(
+  app,
+  "nome: clientNamesFromForm()",
+`    agentes_atribuidos: agentesAtribuidos,
+    nome: titleCaseName($("clientName").value),`,
+`    agentes_atribuidos: agentesAtribuidos,
+    nome: clientNamesFromForm(),`,
+  "salvar nomes adicionais no cliente"
 );
 
 // Município manual para importação: se não houver projeto reconhecido/selecionado,
@@ -185,9 +300,39 @@ app = replaceRequired(
   "eventos do município da importação"
 );
 
+app = replaceIfMissing(
+  app,
+  "$(\"addClientNameButton\").addEventListener",
+`  $("clientImportRun").addEventListener("click", runClientImport);
+  $("clientForm").addEventListener("submit", saveClient);`,
+`  $("clientImportRun").addEventListener("click", runClientImport);
+  $("clientForm").addEventListener("submit", saveClient);
+  $("addClientNameButton").addEventListener("click", () => addClientNameField());
+  $("additionalClientNames").addEventListener("click", (event) => {
+    if (!event.target.closest(".remove-client-name")) return;
+    event.target.closest(".additional-client-name-row")?.remove();
+  });`,
+  "eventos de nomes adicionais"
+);
+
 await writeFile(resolve(out, "app.js"), app, "utf8");
 
 let index = await readFile(resolve(root, "index.html"), "utf8");
+
+index = replaceIfMissing(
+  index,
+  "addClientNameButton",
+`        <label class="span-two">Nome do cliente<input id="clientName" required /></label>`,
+`        <div class="span-two client-names-field">
+          <div class="client-name-label-row">
+            <label for="clientName">Nome do cliente</label>
+            <button id="addClientNameButton" type="button" class="icon-button client-name-add" title="Adicionar outra pessoa ao mesmo card">+</button>
+          </div>
+          <input id="clientName" required />
+          <div id="additionalClientNames" class="additional-client-names"></div>
+        </div>`,
+  "botão para adicionar pessoa ao card"
+);
 
 index = replaceRequired(
   index,
@@ -300,6 +445,51 @@ index = index.replace("</body>", `${weeklyLoader}\n  <script type="module" src="
 await writeFile(resolve(out, "index.html"), index, "utf8");
 
 let style = await readFile(resolve(out, "style.css"), "utf8");
+style += `
+
+.client-names-field {
+  display: grid;
+  gap: 8px;
+}
+.client-name-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.client-name-label-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.client-name-add {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1;
+}
+.additional-client-names {
+  display: grid;
+  gap: 7px;
+}
+.additional-client-name-row {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  gap: 8px;
+  align-items: center;
+}
+.additional-client-name-row input {
+  margin: 0;
+}
+.remove-client-name {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1;
+}
+`;
 style += `
 
 /* ===== CRM 2026-08 — refinamento de clientes e mensagens ===== */
